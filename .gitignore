@@ -1,0 +1,12 @@
+# Data (big files, downloaded separately)
+data/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# VS Code / OS
+.vscode/
+.DS_Store
+Thumbs.db
