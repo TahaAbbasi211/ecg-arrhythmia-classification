@@ -49,3 +49,40 @@ def morph_features(X):
 
 def build_features(X, rr, g):
     return np.hstack([rr_features(rr, g), morph_features(X)])
+
+def context_rr_features(rr, g, k=10):
+    prev_rr = rr[:, 0].astype(float)
+    next_rr = rr[:, 1].astype(float)
+    n = len(prev_rr)
+
+    local = np.zeros(n)   # average of the previous k R-R intervals
+    prev2 = np.zeros(n)   # R-R interval before the previous beat
+    next2 = np.zeros(n)   # R-R interval after the next beat
+
+    for rec in np.unique(g):
+        idx = np.where(g == rec)[0]
+        p = prev_rr[idx]
+        nx = next_rr[idx]
+        cs = np.concatenate([[0], np.cumsum(p)])
+
+        for j in range(len(p)):
+            lo = max(0, j - k)
+            local[idx[j]] = p[j] if j == lo else (cs[j] - cs[lo]) / (j - lo)
+
+        prev2[idx[1:]] = p[:-1]
+        prev2[idx[0]] = p[0]
+        next2[idx[:-1]] = nx[1:]
+        next2[idx[-1]] = nx[-1]
+
+    return np.column_stack([
+        local,
+        prev_rr / local,
+        next_rr / local,
+        (prev_rr + next_rr) / local,
+        prev2 / local,
+        next2 / local,
+    ])
+
+
+def build_features_v2(X, rr, g):
+    return np.hstack([rr_features(rr, g), context_rr_features(rr, g), morph_features(X)])
