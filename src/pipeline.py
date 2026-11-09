@@ -10,6 +10,10 @@ TARGET_FS = 360          # sampling rate the model was trained on
 PRE, POST = 90, 110      # samples before / after each R-peak
 CLASSES = ["N", "S", "V", "F"]
 
+# F (fusion) beats are not predicted: only 414 training beats from a few patients,
+# and boosting F produced thousands of false alarms on test patients.
+DECISION_WEIGHTS = np.array([1.0, 4.0, 1.0, 0.0])
+
 AAMI_MAP = {
     "N": "N", "L": "N", "R": "N", "e": "N", "j": "N",
     "A": "S", "a": "S", "J": "S", "S": "S",
@@ -68,7 +72,7 @@ def analyze(sig, fs, bundle):
     model = bundle["model"]
     proba = np.zeros((len(X), 4))
     proba[:, model.classes_] = model.predict_proba(F)
-    pred = (proba * bundle["weights"]).argmax(1)
+    pred = (proba * DECISION_WEIGHTS).argmax(1)
 
     return {"signal": sig_f, "peaks": np.array(used), "pred": pred,
             "proba": proba, "fs": TARGET_FS}
