@@ -4,6 +4,7 @@ from math import gcd
 from scipy.signal import butter, filtfilt, resample_poly
 from wfdb import processing
 
+from src import portable
 from src.features import build_features
 
 TARGET_FS = 360          # sampling rate the model was trained on
@@ -46,11 +47,9 @@ def _empty(sig_f):
             "fs": TARGET_FS}
 
 
-def analyze(sig, fs, bundle):
-    sig = to_360hz(np.asarray(sig, dtype=float), fs)
-    sig_f = bandpass(sig, TARGET_FS)
-
-    peaks = np.asarray(processing.xqrs_detect(sig=sig, fs=TARGET_FS, verbose=False))
+def _classify(sig_f, peaks, bundle):
+    """Cut a beat around every R-peak, build features and predict its class."""
+    peaks = np.asarray(peaks)
     if len(peaks) < 3:
         return _empty(sig_f)
 
@@ -76,3 +75,27 @@ def analyze(sig, fs, bundle):
 
     return {"signal": sig_f, "peaks": np.array(used), "pred": pred,
             "proba": proba, "fs": TARGET_FS}
+
+
+def analyze(sig, fs, bundle):
+    """Original pipeline: scipy filter + XQRS R-peak detector (wfdb)."""
+    sig = to_360hz(np.asarray(sig, dtype=float), fs)
+    sig_f = bandpass(sig, TARGET_FS)
+    peaks = np.asarray(processing.xqrs_detect(sig=sig, fs=TARGET_FS, verbose=False))
+    return _classify(sig_f, peaks, bundle)
+
+
+_SOS = None
+
+
+def analyze_portable(sig, fs, bundle):
+    """Portable pipeline: filter and R-peak detector use only simple numpy code (src/portable.py)."""
+    global _SOS
+    if _SOS is None:
+        _SOS = portable.make_sos()
+    sos_main, sos_det = _SOS
+
+    sig = to_360hz(np.asarray(sig, dtype=float), fs)
+    sig_f = portable.filtfilt(sos_main, sig)
+    peaks = portable.detect_rpeaks(sig_f, sos_det)
+    return _classify(sig_f, peaks, bundle)
