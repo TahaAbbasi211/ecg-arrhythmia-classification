@@ -71,7 +71,8 @@ def _classify(sig_f, peaks, bundle):
     model = bundle["model"]
     proba = np.zeros((len(X), 4))
     proba[:, model.classes_] = model.predict_proba(F)
-    pred = (proba * DECISION_WEIGHTS).argmax(1)
+    weights = bundle.get("decision_weights", DECISION_WEIGHTS)
+    pred = (proba * weights).argmax(1)
 
     return {"signal": sig_f, "peaks": np.array(used), "pred": pred,
             "proba": proba, "fs": TARGET_FS}
