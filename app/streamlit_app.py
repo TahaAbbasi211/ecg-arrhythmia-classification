@@ -1,3 +1,4 @@
+
 import os
 import sys
 
@@ -6,13 +7,14 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT)
 
-from src.pipeline import analyze, load_model, CLASSES
+from src.pipeline import analyze_portable, load_model, CLASSES
 
 SAMPLES_DIR = os.path.join(ROOT, "app", "samples")
-MODEL_PATH = os.path.join(ROOT, "models", "ecg_rf.joblib")
+MODEL_PATH = os.path.join(ROOT, "models", "ecg_rf_small.joblib")
 
 COLORS = {"N": "#2e9e5b", "S": "#f0a020", "V": "#d63a3a"}
 NAMES = {
@@ -31,7 +33,7 @@ def get_model():
 
 @st.cache_data
 def run_analysis(sig, fs):
-    return analyze(sig, fs, get_model())
+        return analyze_portable(sig, fs, get_model())
 
 
 st.title("🫀 ECG Arrhythmia Classifier")
@@ -102,7 +104,8 @@ for c in ["N", "S", "V"]:
                label=f"{c} - {NAMES[c]}", zorder=3)
 ax.set_xlabel("Time (s)")
 ax.set_ylabel("Amplitude (mV)")
-ax.legend(loc="upper right", fontsize=8)
+ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=3,
+          fontsize=8, frameon=False)
 st.pyplot(fig)
 plt.close(fig)
 
@@ -123,9 +126,9 @@ with right:
 
 with st.expander("About this model"):
     st.markdown(
-        "- Random Forest trained on the MIT-BIH Arrhythmia Database (22 training patients).\n"
+        "- Random Forest (50 trees) trained on the MIT-BIH Arrhythmia Database (22 training patients).\n"
         "- Evaluated on 22 different patients (inter-patient split).\n"
-        "- Test F1: **N 0.96**, **V 0.93**, **S 0.17**. S beats look very similar to normal "
+        "- Test F1: **N 0.965**, **V 0.926**, **S 0.180**. S beats look very similar to normal "
         "beats, so this class is weak.\n"
         "- Fusion (F) beats are not predicted: there was too little training data and "
         "boosting them caused many false alarms.\n"
