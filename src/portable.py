@@ -111,3 +111,123 @@ def detect_rpeaks(xf, sos_det, fs=FS):
             continue
         out.append(p)
     return np.array(out, dtype=int)
+
+# ---------------------------------------------------------------------------
+# Beat features, Random Forest evaluation and the full reference pipeline
+# ---------------------------------------------------------------------------
+PRE, POST = 90, 110      # samples before / after each R-peak
+R = 90                   # position of the R-peak inside a beat window
+
+
+def resample_linear(x, fs, target=FS):
+    """Linear-interpolation resampling to 360 Hz."""
+    x = np.asarray(x, dtype=float)
+    if int(round(fs)) == target:
+        return x
+    n_out = int(len(x) * target / fs)
+    t = np.arange(n_out) * fs / target
+    return np.interp(t, np.arange(len(x)), x)
+
+
+def beat_features(beat, prev_rr, next_rr, med_rr):
+    """57 features of one beat (200 samples) and its neighbouring R-R intervals (in samples)."""
+    x = np.asarray(beat, dtype=float)
+    x = x - np.median(x)
+
+    peak = x.max()
+    trough = x.min()
+    p2p = peak - trough
+    amp_r = x[R]
+    t_peak = int(np.argmax(x)) - R        # first index on ties
+    t_trough = int(np.argmin(x)) - R
+
+    thr = 0.3 * np.abs(x).max()
+    width = int(np.sum(np.abs(x[R - 40:R + 40]) > thr))
+
+    energy = float(np.sum(x * x))
+    area = float(np.sum(np.abs(x)))
+
+    dev = x - x.mean()
+    m2 = float(np.mean(dev ** 2))
+    m3 = float(np.mean(dev ** 3))
+    m4 = float(np.mean(dev ** 4))
+    sd = m2 ** 0.5
+    if m2 > 1e-12:
+        sk = m3 / m2 ** 1.5
+        ku = m4 / m2 ** 2 - 3.0
+    else:
+        sk = 0.0
+        ku = 0.0
+
+    shape = x[::5] / (p2p + 1e-8)         # 40 values
+
+    rr_part = [prev_rr, next_rr, prev_rr / next_rr, prev_rr / med_rr, next_rr / med_rr]
+    morph = [amp_r, peak, trough, p2p, t_peak, t_trough, width, energy, area, sd, sk, ku]
+    return np.concatenate([rr_part, morph, shape])
+
+
+def export_forest(model, decimals=6):
+    """Turn a fitted sklearn RandomForestClassifier into plain lists (JSON friendly)."""
+    assert list(model.classes_) == [0, 1, 2, 3]
+    trees = []
+    for est in model.estimators_:
+        t = est.tree_
+        value = t.value[:, 0, :]
+        proba = value / value.sum(axis=1, keepdims=True)
+        leaf = t.children_left == -1
+        trees.append({
+            "feature": [-1 if lf else int(f) for f, lf in zip(t.feature, leaf)],
+            "threshold": [0.0 if lf else float(th) for th, lf in zip(t.threshold, leaf)],
+            "left": [int(v) for v in t.children_left],
+            "right": [int(v) for v in t.children_right],
+            "value": [np.round(p, decimals).tolist() if lf else None
+                      for p, lf in zip(proba, leaf)],
+        })
+    return {"n_classes": 4, "trees": trees}
+
+
+def forest_predict_proba(forest, x):
+    """Average of the leaf probabilities of all trees, like sklearn's predict_proba."""
+    # sklearn casts features to float32 before comparing them with the (float64) thresholds
+    xr = np.asarray(x, dtype=np.float32).astype(np.float64).tolist()
+    total = [0.0, 0.0, 0.0, 0.0]
+    for t in forest["trees"]:
+        left, right, feat, thr = t["left"], t["right"], t["feature"], t["threshold"]
+        i = 0
+        while left[i] != -1:
+            i = left[i] if xr[feat[i]] <= thr[i] else right[i]
+        v = t["value"][i]
+        for c in range(4):
+            total[c] += v[c]
+    n = len(forest["trees"])
+    return np.array([s / n for s in total])
+
+
+def analyze_reference(sig, fs, cfg, forest):
+    """Everything the phone has to do, using only the simple functions of this file."""
+    sos_main = np.asarray(cfg["sos_main"], dtype=float)
+    sos_det = np.asarray(cfg["sos_det"], dtype=float)
+
+    sig = resample_linear(sig, fs)
+    sig_f = filtfilt(sos_main, sig)
+    peaks = detect_rpeaks(sig_f, sos_det)
+
+    beats, rr, used = [], [], []
+    for k in range(1, len(peaks) - 1):
+        p = int(peaks[k])
+        if p - PRE < 0 or p + POST > len(sig_f):
+            continue
+        beats.append(sig_f[p - PRE:p + POST])
+        rr.append((int(peaks[k] - peaks[k - 1]), int(peaks[k + 1] - peaks[k])))
+        used.append(p)
+
+    if len(beats) == 0:
+        return {"signal": sig_f, "peaks": np.array([], dtype=int),
+                "pred": np.array([], dtype=int), "proba": np.zeros((0, 4))}
+
+    med = float(np.median([r[0] for r in rr]))
+    w = np.asarray(cfg["decision_weights"], dtype=float)
+    proba = np.array([forest_predict_proba(forest, beat_features(b, r[0], r[1], med))
+                      for b, r in zip(beats, rr)])
+    pred = (proba * w).argmax(1)
+    return {"signal": sig_f, "peaks": np.array(used), "pred": pred, "proba": proba}
