@@ -128,7 +128,7 @@ with st.expander("About this model"):
     st.markdown(
         "- Random Forest (50 trees) trained on the MIT-BIH Arrhythmia Database (22 training patients).\n"
         "- Evaluated on 22 different patients (inter-patient split).\n"
-        "- Test F1: **N 0.965**, **V 0.926**, **S 0.180**. S beats look very similar to normal "
+        "- Test F1: **N 0.965**, **V 0.923**, **S 0.177**. S beats look very similar to normal "
         "beats, so this class is weak.\n"
         "- Fusion (F) beats are not predicted: there was too little training data and "
         "boosting them caused many false alarms.\n"
