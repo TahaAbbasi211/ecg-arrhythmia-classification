@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../data/analysis_worker.dart';
+import '../l10n/strings.dart';
 import 'ecg_plot.dart';
 import 'theme.dart';
 
@@ -50,6 +51,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final payload = widget.payload;
@@ -63,7 +65,37 @@ class _ResultScreenState extends State<ResultScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          IconButton(
+            tooltip: s.languageTooltip,
+            icon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    s.languageToggle,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            onPressed: () {
+              final current = appLocaleNotifier.value.languageCode;
+              appLocaleNotifier.value =
+                  current == 'fa' ? const Locale('en') : const Locale('fa');
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -77,25 +109,23 @@ class _ResultScreenState extends State<ResultScreen> {
               childAspectRatio: 1.9,
               children: [
                 _SummaryCard(
-                  label: 'Beats analyzed',
+                  label: s.beatsAnalyzed,
                   value: '${payload.beatCount}',
                   icon: Icons.favorite_outline,
                 ),
                 _SummaryCard(
-                  label: 'Heart rate',
-                  value: payload.heartRate == null
-                      ? '—'
-                      : '${payload.heartRate!.round()} bpm',
+                  label: s.heartRate,
+                  value: s.bpmValue(payload.heartRate?.round()),
                   icon: Icons.monitor_heart_outlined,
                 ),
                 _SummaryCard(
-                  label: 'S beats',
+                  label: s.sBeats,
                   value: '${payload.countOf(1)}',
                   icon: Icons.circle,
                   accent: classSColor,
                 ),
                 _SummaryCard(
-                  label: 'V beats',
+                  label: s.vBeats,
                   value: '${payload.countOf(2)}',
                   icon: Icons.circle,
                   accent: classVColor,
@@ -105,10 +135,10 @@ class _ResultScreenState extends State<ResultScreen> {
             const SizedBox(height: 20),
             Row(
               children: [
-                Text('ECG signal', style: theme.textTheme.titleMedium),
+                Text(s.ecgSignal, style: theme.textTheme.titleMedium),
                 const Spacer(),
                 Text(
-                  '${_windowSeconds.round()} s window',
+                  s.windowLabel(_windowSeconds.round()),
                   style: theme.textTheme.labelMedium
                       ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
@@ -143,19 +173,19 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
             const EcgLegend(),
             const SizedBox(height: 20),
-            Text('Beat counts', style: theme.textTheme.titleMedium),
+            Text(s.beatCounts, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             _CountBarChart(payload: payload),
             const SizedBox(height: 20),
             Text(
-              'S and V beats',
+              s.sAndVBeats,
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
             Text(
               sBeats.isEmpty && vBeats.isEmpty
-                  ? 'None detected in this signal.'
-                  : 'Tap a row to jump to that beat in the plot.',
+                  ? s.noArrhythmiaDetected
+                  : s.tapToJump,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
@@ -170,7 +200,7 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             const SizedBox(height: 24),
             Text(
-              'Educational project, not a medical device.',
+              s.disclaimer,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
