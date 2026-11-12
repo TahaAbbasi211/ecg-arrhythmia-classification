@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../data/analysis_worker.dart';
+import '../l10n/strings.dart';
 import 'theme.dart';
 
 /// Draws the filtered ECG trace with colored beat markers.
@@ -162,6 +163,7 @@ class EcgLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final textStyle = Theme.of(context).textTheme.labelMedium;
     return Wrap(
       spacing: 16,
@@ -180,7 +182,7 @@ class EcgLegend extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text('${classLabels[i]} · ${classLongLabels[i]}', style: textStyle),
+              Text('${classLabels[i]} · ${s.classLabelLong(i)}', style: textStyle),
             ],
           ),
       ],
