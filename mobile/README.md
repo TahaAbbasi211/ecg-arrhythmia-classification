@@ -1,7 +1,12 @@
-# ECG Beat Classifier (Android)
+# ECG Beat Classifier (Android) - V2
 
 Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (normal),
 **S** (supraventricular premature) or **V** (ventricular premature).
+
+**Version 2.0 (V2) Features:**
+- **Full Persian (Farsi) & English localization:** Native Right-to-Left (RTL) support, full medical and technical Persian terminology, and an instant in-app language switcher (`FA` / `EN`).
+- Automatic locale detection (starts in Persian if device language is Persian).
+- Pure on-device offline inference (no internet permission required).
 
 Everything runs on the device: filtering, R-peak detection, the 57 beat features and a
 50-tree Random Forest are pure Dart. There is no network code, no analytics and no ML
