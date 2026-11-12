@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/file_service.dart';
 import '../data/model_bundle.dart';
 import '../data/signal_parser.dart';
+import '../l10n/strings.dart';
 import 'about_screen.dart';
 import 'result_screen.dart';
 
@@ -33,15 +34,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickCsv() async {
+    final s = AppStrings.of(context);
     setState(() => _error = null);
     try {
       final result = await pickSignalFile();
       if (result == null) return;
       final parsed = parseSignalText(result.text);
       if (parsed.values.length < 2) {
-        setState(() => _error =
-            'No numbers found in that file. Expected one ECG value per line, '
-            'or comma separated columns.');
+        setState(() => _error = s.noNumbersInFile);
         return;
       }
       setState(() {
@@ -51,18 +51,20 @@ class _HomeScreenState extends State<HomeScreen> {
         _selectedSampleId = null;
       });
     } catch (e) {
-      setState(() => _error = 'Could not read that file: $e');
+      setState(() => _error = s.couldNotReadFile(e));
     }
   }
 
   String? _validateRate(String? value) {
+    final s = AppStrings.of(context);
     final v = double.tryParse((value ?? '').trim());
-    if (v == null) return 'Enter a number, for example 360.';
-    if (v < 100 || v > 2000) return 'Sampling rate must be between 100 and 2000 Hz.';
+    if (v == null) return s.validateRateNumber;
+    if (v < 100 || v > 2000) return s.validateRateRange;
     return null;
   }
 
   Future<void> _analyze() async {
+    final s = AppStrings.of(context);
     setState(() => _error = null);
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -71,22 +73,20 @@ class _HomeScreenState extends State<HomeScreen> {
     String title;
     if (_importedValues != null) {
       raw = _importedValues!;
-      title = _importedName ?? 'Imported CSV';
+      title = _importedName ?? (s.isFa ? 'فایل CSV بارگذاری‌شده' : 'Imported CSV');
     } else if (_selectedSampleId != null) {
       final sample =
           sampleRecords.firstWhere((s) => s.id == _selectedSampleId);
       raw = await loadSampleValues(sample);
-      title = sample.title;
+      title = s.sampleTitle(sample.id, sample.title);
     } else {
-      setState(() => _error = 'Pick a demo record or import a CSV first.');
+      setState(() => _error = s.pickRecordFirst);
       return;
     }
 
     final seconds = raw.length / fs;
     if (seconds < 10) {
-      setState(() => _error =
-          'That signal is only ${seconds.toStringAsFixed(1)} s long. '
-          'I need at least 10 s to find enough heartbeats.');
+      setState(() => _error = s.signalTooShort(seconds.toStringAsFixed(1)));
       return;
     }
 
@@ -96,8 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (payload.beatCount == 0) {
         setState(() {
           _busy = false;
-          _error = 'No heartbeats detected. Check the sampling rate and that '
-              'the file holds a single ECG lead.';
+          _error = s.noBeatsDetected;
         });
         return;
       }
@@ -116,22 +115,49 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Analysis failed: $e';
+        _error = s.analysisFailed(e);
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ECG Beat Classifier'),
+        title: Text(s.appTitle),
         actions: [
           IconButton(
-            tooltip: 'About',
+            tooltip: s.languageTooltip,
+            icon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    s.languageToggle,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            onPressed: () {
+              final current = appLocaleNotifier.value.languageCode;
+              appLocaleNotifier.value =
+                  current == 'fa' ? const Locale('en') : const Locale('fa');
+            },
+          ),
+          IconButton(
+            tooltip: s.aboutTooltip,
             icon: const Icon(Icons.info_outline),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AboutScreen()),
@@ -146,13 +172,12 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
               Text(
-                'Classify single-lead heartbeats as N, S or V. '
-                'Everything runs on this phone, offline.',
+                s.appTagline,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: scheme.onSurfaceVariant),
               ),
               const SizedBox(height: 20),
-              Text('Demo records', style: theme.textTheme.titleMedium),
+              Text(s.demoRecords, style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               for (final sample in sampleRecords)
                 Padding(
@@ -171,15 +196,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               const SizedBox(height: 12),
-              Text('Your own signal', style: theme.textTheme.titleMedium),
+              Text(s.yourOwnSignal, style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _pickCsv,
                 icon: const Icon(Icons.upload_file),
                 label: Text(
                   _importedName == null
-                      ? 'Import CSV'
-                      : 'Imported: $_importedName',
+                      ? s.importCsv
+                      : s.imported(_importedName!),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -187,8 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '${_importedValues!.length} samples'
-                    '${_importedSkipped > 0 ? ' · $_importedSkipped lines ignored' : ''}',
+                    s.samplesCount(_importedValues!.length, _importedSkipped),
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
@@ -197,9 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
               TextFormField(
                 controller: _rateController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Sampling rate (Hz)',
-                  helperText: 'Between 100 and 2000. Demo records are 360 Hz.',
+                decoration: InputDecoration(
+                  labelText: s.samplingRateLabel,
+                  helperText: s.samplingRateHelper,
                 ),
                 validator: _validateRate,
                 enabled: !_busy,
@@ -239,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.monitor_heart_outlined),
-                label: Text(_busy ? 'Analyzing…' : 'Analyze'),
+                label: Text(_busy ? s.analyzing : s.analyze),
               ),
               if (_busy)
                 Padding(
@@ -250,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               const SizedBox(height: 24),
               Text(
-                'Educational project, not a medical device.',
+                s.disclaimer,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: scheme.onSurfaceVariant),
               ),
@@ -275,6 +299,7 @@ class _SampleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: InkWell(
@@ -295,11 +320,13 @@ class _SampleTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(sample.title,
-                        style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      s.sampleTitle(sample.id, sample.title),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 2),
                     Text(
-                      sample.subtitle,
+                      s.sampleSubtitle(sample.id, sample.subtitle),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
