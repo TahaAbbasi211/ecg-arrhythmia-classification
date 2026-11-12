@@ -1,13 +1,15 @@
 name: ecg_beat_classifier
 description: "ECG Beat Classifier - offline single-lead heartbeat classification (N, S, V)."
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: ^3.9.0
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   file_picker: ^13.3.3
 
