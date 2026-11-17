@@ -59,7 +59,6 @@ Overall accuracy 0.933, macro F1 over N, S and V: 0.688.
 - **The test patients influenced one more decision.** The smallest forest allowed by my first selection rule (30 trees) scored macro F1 0.671 on the test patients, mostly because of V precision. I then changed the rule to "best cross-validation score under a 1 MB size budget", which selected the 50-tree forest.
 - Local rhythm context features (average of the previous 10 R-R intervals) did not improve cross-validated performance (0.510 vs 0.522) and were not used.
 - Evaluated on one database, one lead only. Not validated on other devices or populations.
-- **This is an educational project, not a medical device.**
 
 ## Run the Streamlit app
 
