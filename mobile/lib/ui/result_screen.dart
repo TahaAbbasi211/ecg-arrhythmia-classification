@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../data/analysis_worker.dart';
+import '../data/model_bundle.dart';
 import '../l10n/strings.dart';
 import 'ecg_plot.dart';
 import 'theme.dart';
@@ -12,13 +13,20 @@ class ResultScreen extends StatefulWidget {
   const ResultScreen({
     super.key,
     required this.payload,
-    required this.title,
     required this.sourceFs,
+    this.sample,
+    this.fileName,
   });
 
   final AnalysisPayload payload;
-  final String title;
   final double sourceFs;
+
+  /// The demo record, when one was analyzed. The title is rebuilt from it on
+  /// every frame, so switching the language renames the screen too.
+  final SampleRecord? sample;
+
+  /// The imported file name, when a file was analyzed.
+  final String? fileName;
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -34,19 +42,34 @@ class _ResultScreenState extends State<ResultScreen> {
     super.dispose();
   }
 
+  double get _durationSeconds {
+    final fs = widget.payload.sampleRate.toDouble();
+    if (fs <= 0) return 0;
+    return widget.payload.signal.length / fs;
+  }
+
   /// Scroll so that [sampleIndex] sits in the middle of the visible window.
   void _jumpToSample(int sampleIndex) {
     if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final viewport = position.viewportDimension;
+    if (viewport <= 0) return;
+    final window = math.min(_windowSeconds, _durationSeconds);
+    if (window <= 0) return;
     final fs = widget.payload.sampleRate.toDouble();
-    final viewport = _scrollController.position.viewportDimension;
-    final pxPerSecond = viewport / _windowSeconds;
+    final pxPerSecond = viewport / window;
     final target = sampleIndex / fs * pxPerSecond - viewport / 2;
-    final max = _scrollController.position.maxScrollExtent;
     _scrollController.animateTo(
-      target.clamp(0.0, max),
+      target.clamp(0.0, position.maxScrollExtent),
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
+  }
+
+  String _title(AppStrings s) {
+    final sample = widget.sample;
+    if (sample != null) return s.sampleTitle(sample.id, sample.title);
+    return widget.fileName ?? s.importedCsvTitle;
   }
 
   @override
@@ -57,16 +80,18 @@ class _ResultScreenState extends State<ResultScreen> {
     final payload = widget.payload;
     final fs = payload.sampleRate.toDouble();
 
-    final sBeats = <int>[];
-    final vBeats = <int>[];
-    for (var i = 0; i < payload.pred.length; i++) {
-      if (payload.pred[i] == 1) sBeats.add(i);
-      if (payload.pred[i] == 2) vBeats.add(i);
-    }
+    // Both lists in time order, whatever order the classes came back in.
+    final arrhythmia = <int>[
+      for (var i = 0; i < payload.pred.length; i++)
+        if (payload.pred[i] == 1 || payload.pred[i] == 2) i,
+    ]..sort((a, b) => payload.peaks[a].compareTo(payload.peaks[b]));
+
+    final maxWindow = math.max(3.0, math.min(15.0, _durationSeconds));
+    final window = math.min(_windowSeconds, maxWindow);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(_title(s), overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             tooltip: s.languageTooltip,
@@ -83,7 +108,10 @@ class _ResultScreenState extends State<ResultScreen> {
                   const SizedBox(width: 4),
                   Text(
                     s.languageToggle,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -97,115 +125,160 @@ class _ResultScreenState extends State<ResultScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1.9,
-              children: [
-                _SummaryCard(
-                  label: s.beatsAnalyzed,
-                  value: '${payload.beatCount}',
-                  icon: Icons.favorite_outline,
-                ),
-                _SummaryCard(
-                  label: s.heartRate,
-                  value: s.bpmValue(payload.heartRate?.round()),
-                  icon: Icons.monitor_heart_outlined,
-                ),
-                _SummaryCard(
-                  label: s.sBeats,
-                  value: '${payload.countOf(1)}',
-                  icon: Icons.circle,
-                  accent: classSColor,
-                ),
-                _SummaryCard(
-                  label: s.vBeats,
-                  value: '${payload.countOf(2)}',
-                  icon: Icons.circle,
-                  accent: classVColor,
-                ),
-              ],
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              sliver: SliverList.list(
+                children: [
+                  _SummaryRow(
+                    left: _SummaryCard(
+                      label: s.beatsAnalyzed,
+                      value: '${payload.beatCount}',
+                      icon: Icons.favorite_outline,
+                    ),
+                    right: _SummaryCard(
+                      label: s.heartRate,
+                      value: s.bpmValue(payload.heartRate?.round()),
+                      icon: Icons.monitor_heart_outlined,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _SummaryRow(
+                    left: _SummaryCard(
+                      label: s.sBeats,
+                      value: '${payload.countOf(1)}',
+                      icon: Icons.circle,
+                      accent: classSColor,
+                    ),
+                    right: _SummaryCard(
+                      label: s.vBeats,
+                      value: '${payload.countOf(2)}',
+                      icon: Icons.circle,
+                      accent: classVColor,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          s.ecgSignal,
+                          style: theme.textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          s.windowLabel(window.round()),
+                          style: theme.textTheme.labelMedium
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 180,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: EcgPlot(
+                          payload: payload,
+                          windowSeconds: window,
+                          scrollController: _scrollController,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (maxWindow > 3)
+                    Slider(
+                      value: window,
+                      min: 3,
+                      max: maxWindow,
+                      divisions: math.max(1, (maxWindow - 3).round()),
+                      label: s.windowLabel(window.round()),
+                      onChanged: (value) =>
+                          setState(() => _windowSeconds = value),
+                    ),
+                  const EcgLegend(),
+                  const SizedBox(height: 20),
+                  Text(s.beatCounts, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  _CountBarChart(payload: payload),
+                  const SizedBox(height: 20),
+                  Text(s.sAndVBeats, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    arrhythmia.isEmpty
+                        ? s.noArrhythmiaDetected
+                        : s.tapToJump,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Text(s.ecgSignal, style: theme.textTheme.titleMedium),
-                const Spacer(),
-                Text(
-                  s.windowLabel(_windowSeconds.round()),
-                  style: theme.textTheme.labelMedium
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList.builder(
+                itemCount: arrhythmia.length,
+                itemBuilder: (context, i) {
+                  final index = arrhythmia[i];
+                  return _BeatRow(
+                    timeSeconds: payload.peaks[index] / fs,
+                    classIndex: payload.pred[index],
+                    proba: payload.proba[index],
+                    onTap: () => _jumpToSample(payload.peaks[index]),
+                  );
+                },
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  s.disclaimer,
+                  style: theme.textTheme.bodySmall
                       ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 180,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: EcgPlot(
-                    payload: payload,
-                    windowSeconds: _windowSeconds,
-                    scrollController: _scrollController,
-                  ),
-                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Slider(
-              value: _windowSeconds,
-              min: 3,
-              max: 15,
-              divisions: 12,
-              label: '${_windowSeconds.round()} s',
-              onChanged: (v) => setState(() => _windowSeconds = v),
-            ),
-            const EcgLegend(),
-            const SizedBox(height: 20),
-            Text(s.beatCounts, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _CountBarChart(payload: payload),
-            const SizedBox(height: 20),
-            Text(
-              s.sAndVBeats,
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              sBeats.isEmpty && vBeats.isEmpty
-                  ? s.noArrhythmiaDetected
-                  : s.tapToJump,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 8),
-            for (final i in [...sBeats, ...vBeats])
-              _BeatRow(
-                index: i,
-                timeSeconds: payload.peaks[i] / fs,
-                classIndex: payload.pred[i],
-                proba: payload.proba[i],
-                onTap: () => _jumpToSample(payload.peaks[i]),
-              ),
-            const SizedBox(height: 24),
-            Text(
-              s.disclaimer,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Two summary cards side by side, both as tall as the taller one.
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({required this.left, required this.right});
+
+  final Widget left;
+  final Widget right;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: left),
+          const SizedBox(width: 10),
+          Expanded(child: right),
+        ],
       ),
     );
   }
@@ -230,11 +303,13 @@ class _SummaryCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final color = accent ?? scheme.primary;
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               children: [
@@ -243,6 +318,7 @@ class _SummaryCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
+                    maxLines: 1,
                     style: theme.textTheme.labelMedium
                         ?.copyWith(color: scheme.onSurfaceVariant),
                     overflow: TextOverflow.ellipsis,
@@ -251,11 +327,16 @@ class _SummaryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ],
@@ -340,16 +421,15 @@ class _CountBarChart extends StatelessWidget {
   }
 }
 
+/// One S or V beat: time, class and probability.
 class _BeatRow extends StatelessWidget {
   const _BeatRow({
-    required this.index,
     required this.timeSeconds,
     required this.classIndex,
     required this.proba,
     required this.onTap,
   });
 
-  final int index;
   final double timeSeconds;
   final int classIndex;
   final List<double> proba;
@@ -360,8 +440,10 @@ class _BeatRow extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final color = colorForClass(classIndex);
-    final minutes = timeSeconds ~/ 60;
-    final seconds = timeSeconds - minutes * 60;
+    // Round to tenths first: 59.98 s must read 1:00.0, never 0:60.0.
+    final totalTenths = (timeSeconds * 10).round();
+    final minutes = totalTenths ~/ 600;
+    final seconds = (totalTenths % 600) / 10.0;
     final timeText = '$minutes:${seconds.toStringAsFixed(1).padLeft(4, '0')}';
 
     return Card(
@@ -401,7 +483,11 @@ class _BeatRow extends StatelessWidget {
                     ?.copyWith(color: scheme.onSurfaceVariant),
               ),
               const SizedBox(width: 4),
-              Icon(Icons.chevron_right, size: 18, color: scheme.onSurfaceVariant),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

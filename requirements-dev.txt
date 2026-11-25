@@ -1,0 +1,12 @@
+# Development extras: the notebooks and the wfdb/scipy reference pipeline.
+# The Streamlit app and the Android app never import wfdb.
+-r requirements.txt
+
+wfdb==4.3.1
+pytest==9.2.0
+pytest-cov==7.1.0
+
+# Notebook kernel (the notebooks were run with Jupyter 7).
+ipykernel==7.3.0
+jupyter_client==8.10.0
+jupyter_core==5.9.1

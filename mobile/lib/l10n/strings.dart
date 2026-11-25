@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/signal_units.dart';
+
 /// Global locale notifier so user can change language anywhere in the app.
 final ValueNotifier<Locale> appLocaleNotifier = ValueNotifier<Locale>(
   const Locale('en'),
@@ -18,7 +20,7 @@ class AppStrings {
   bool get isFa => isPersian(context);
 
   String get appTitle => isFa ? 'طبقه‌بندی ضربان قلب ECG' : 'ECG Beat Classifier';
-  String get appVersion => 'V2.0.0';
+  String get appVersion => 'V2.1.0';
 
   String get appTagline => isFa
       ? 'طبقه‌بندی ضربان‌های تک‌لید به دسته‌های N، S و V. تمام پردازش‌ها کاملاً آفلاین روی گوشی اجرا می‌شوند.'
@@ -29,6 +31,8 @@ class AppStrings {
   String get importCsv => isFa ? 'بارگذاری فایل CSV' : 'Import CSV';
 
   String imported(String name) => isFa ? 'بارگذاری شد: $name' : 'Imported: $name';
+
+  String get importedCsvTitle => isFa ? 'فایل CSV بارگذاری‌شده' : 'Imported CSV';
 
   String samplesCount(int count, int skipped) {
     if (isFa) {
@@ -42,6 +46,38 @@ class AppStrings {
   String get samplingRateHelper => isFa
       ? 'بین ۱۰۰ تا ۲۰۰۰ هرتز. نمونه‌های پیش‌فرض ۳۶۰ هرتز هستند.'
       : 'Between 100 and 2000. Demo records are 360 Hz.';
+
+  String get signalUnitLabel => isFa ? 'واحد سیگنال' : 'Signal unit';
+  String get signalUnitHelper => isFa
+      ? 'واحد مقادیر فایل. رکوردهای نمونه بر حسب میلی‌ولت هستند.'
+      : 'Unit of the numbers in the file. Demo records are in millivolts.';
+
+  String unitLabel(SignalUnit unit) {
+    switch (unit) {
+      case SignalUnit.millivolt:
+        return isFa ? 'میلی‌ولت (mV)' : 'Millivolts (mV)';
+      case SignalUnit.volt:
+        return isFa ? 'ولت (×۱۰۰۰)' : 'Volts (x1000)';
+      case SignalUnit.microvolt:
+        return isFa ? 'میکروولت (÷۱۰۰۰)' : 'Microvolts (/1000)';
+    }
+  }
+
+  String get invertPolarity => isFa ? 'معکوس کردن پلاریته' : 'Invert polarity';
+  String get invertPolarityHelp => isFa
+      ? 'اگر ضربان‌ها در نمودار برعکس دیده می‌شوند، این گزینه را روشن کنید.'
+      : 'Turn this on when the beats point the wrong way in the plot.';
+
+  String get amplitudeWarningTitle => isFa ? 'واحد سیگنال مشکوک است' : 'The signal unit looks wrong';
+  String amplitudeTooSmall(String value) => isFa
+      ? 'دامنه سیگنال پس از فیلتر فقط $value است. یک ECG معمولی حدود ۱ میلی‌ولت است، پس شاید فایل بر حسب ولت باشد.'
+      : 'The filtered signal spans only $value. A normal ECG spans about 1 mV, so the file is probably in volts.';
+  String amplitudeTooLarge(String value) => isFa
+      ? 'دامنه سیگنال پس از فیلتر حدود $value است. شاید فایل بر حسب میکروولت یا شمارنده خام ADC باشد.'
+      : 'The filtered signal spans about $value. The file is probably in microvolts or raw ADC counts.';
+  String get continueAnyway => isFa ? 'ادامه' : 'Continue anyway';
+  String convertToUnit(String unit) =>
+      isFa ? 'تبدیل به $unit و تحلیل دوباره' : 'Convert to $unit and analyze again';
 
   String get validateRateNumber => isFa
       ? 'یک عدد معتبر وارد کنید، مثلاً ۳۶۰.'

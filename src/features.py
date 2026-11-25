@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.stats import skew, kurtosis
 
 R = 90  # R-peak position inside each 200-sample beat
 
@@ -37,9 +36,19 @@ def morph_features(X):
 
     energy = (X ** 2).sum(axis=1)
     area = np.abs(X).sum(axis=1)
-    sd = X.std(axis=1)
-    sk = skew(X, axis=1)
-    ku = kurtosis(X, axis=1)
+
+    # Population (biased) moments, computed here instead of scipy.stats so a flat
+    # beat gives 0/0 where scipy returns NaN.  `src/portable.py` returns 0 there,
+    # and the two implementations must agree feature for feature.
+    dev = X - X.mean(axis=1, keepdims=True)
+    m2 = (dev ** 2).mean(axis=1)
+    m3 = (dev ** 3).mean(axis=1)
+    m4 = (dev ** 4).mean(axis=1)
+    sd = np.sqrt(m2)
+    flat = m2 <= 1e-12
+    safe = np.where(flat, 1.0, m2)
+    sk = np.where(flat, 0.0, m3 / safe ** 1.5)
+    ku = np.where(flat, 0.0, m4 / safe ** 2 - 3.0)
 
     shape = X[:, ::5] / (p2p[:, None] + 1e-8)
 

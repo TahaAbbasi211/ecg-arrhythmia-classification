@@ -47,10 +47,10 @@ Overall accuracy 0.933, macro F1 over N, S and V: 0.688.
 
 ## Android app
 
-- Fully offline: no internet permission, all processing and the model run on the phone. English only for now.
-- Pure Dart port of the pipeline in `mobile/lib/ecg`. Correctness is checked with golden test vectors generated from the Python reference (`export/test_vectors.json`): the filter, R-peak detector, features, forest and the end-to-end result are each compared with the Python output (28 tests in total).
+- Fully offline: no internet permission, all processing and the model run on the phone. English and Persian (with right-to-left layout), switchable in the app.
+- Pure Dart port of the pipeline in `mobile/lib/ecg`. Correctness is checked with golden test vectors generated from the Python reference (`export/test_vectors.json`): the filter, R-peak detector, features, forest and the end-to-end result are each compared with the Python output. The resampler is additionally pinned to a shared fixture (`export/resample_parity.json`) that both `pytest` and `flutter test` read. 51 Flutter tests in total.
 - A 30-minute recording (650,000 samples) is analyzed in under a second on a PC.
-- Build instructions: see `mobile/README.md`.
+- Build instructions and signing: see `mobile/README.md` and `mobile/android/SIGNING.md`.
 
 ## Limitations
 
@@ -61,6 +61,18 @@ Overall accuracy 0.933, macro F1 over N, S and V: 0.688.
 - Evaluated on one database, one lead only. Not validated on other devices or populations.
 - **This is an educational project, not a medical device.**
 
+## v2.1 (hardening release)
+
+The model did not change: `models/ecg_rf_small.joblib` (50 trees) and its 57 features are the same file as v2.0.0, and the DS2 results below were re-measured end to end after the changes. What changed is everything around the model:
+
+- **Input handling (both apps)**: CSV files may have one column or `(time, ecg)` (the time axis is detected by its header or by being evenly increasing and never used as the ECG), `#` and `//` comment lines, a BOM, `;` or tab separators, and broken or non-UTF-8 text now shows an error instead of crashing.
+- **Units and polarity**: an input unit selector (mV, V, uV) and a manual invert switch. After filtering, a spread of `p99 - p1` below 0.05 or above 20 suggests the wrong unit; the app says so and offers a one-click conversion, but never converts on its own.
+- **Missing samples**: scattered NaN/Inf values are interpolated, while a file with more than 5% bad samples or a gap longer than 0.5 s is rejected with a clear message instead of producing nonsense.
+- **Resampling**: inputs above 360 Hz are low-pass filtered at 150 Hz before linear resampling, so high-frequency content cannot alias into the ECG band and invent beats. The Dart and Python implementations are checked against one shared fixture at 180, 250 and 500 Hz.
+- **R-peak detector**: the adaptive threshold is now initialised from the median of 2 s block maxima and a median noise level, which removes the cold-start behaviour on recordings that begin with a large beat.
+- **Plotting (Android)**: the 60 s trace is drawn as a viewport-sized canvas over a scrollable spacer with Min-Max decimation, so a recording is no longer squeezed into the screen width and scrolling stays left-to-right in Persian.
+- **Packaging**: pinned `requirements.txt`/`requirements-dev.txt`, a `tests/` suite for the Python side, `scripts/evaluate_ds2.py` for the DS2 numbers, and local Android signing instructions that keep installed copies updatable.
+
 ## Run the Streamlit app
 
 ```bash
@@ -68,7 +80,25 @@ pip install -r requirements.txt
 streamlit run app/streamlit_app.py
 ```
 
-Pick a demo sample or upload a CSV with one column of ECG samples (mV) and set the sampling rate.
+Pick a demo sample or upload a CSV/TXT file. Accepted input:
+
+- one column of ECG samples, or two columns `(time, ecg)` - the time column is detected and ignored;
+- a header line with names (a text first line is treated as the header);
+- `,`, `;` or tab separators, `#` or `//` comment lines, and a UTF-8 BOM.
+
+Set the sampling rate, choose the input unit (mV by default) and invert the polarity if the ECG was recorded upside down. The app warns when the amplitude looks like the wrong unit.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q                 # parsing, DSP, pipeline, app smoke test (48 tests)
+cd mobile
+flutter analyze
+flutter test              # portable reference, plot, screens, localization (51 tests)
+```
+
+`python scripts/evaluate_ds2.py` reproduces the DS2 numbers below with the portable pipeline (`--scipy` switches to the wfdb/XQRS reference). `python scripts/export_test_vectors.py` regenerates the golden vectors, and `python scripts/export_resample_parity.py` the resampling fixture.
 
 ## Reproduce
 
@@ -90,12 +120,14 @@ Run the notebooks in order:
 ## Project structure
 
 ```
-app/            Streamlit app and demo samples
-export/         Exported model (JSON), filter config and golden test vectors
+app/            Streamlit app, shared signal-file parsing and demo samples
+export/         Exported model (JSON), filter config, golden vectors, resampling fixture
 mobile/         Offline Flutter (Android) app
 models/         Trained models (final: ecg_rf_small.joblib)
 notebooks/      Step-by-step notebooks
+scripts/        DS2 evaluation and golden-vector/parity export
 src/            Features, inference pipeline and portable reference implementation
+tests/          pytest suite (parsing, DSP, pipeline, golden vectors)
 docs/           README images
 ```
 

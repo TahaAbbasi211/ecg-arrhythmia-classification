@@ -61,6 +61,17 @@ class Forest {
   /// sklearn casts features to float32 before comparing them with the float64
   /// thresholds, so each feature is rounded to float32 first.
   List<double> predictProba(List<double> x) {
+    for (var i = 0; i < x.length; i++) {
+      if (!x[i].isFinite) {
+        // NaN compares false against every threshold and would silently follow
+        // the right branch of every tree, so refuse the input instead.
+        throw ArgumentError.value(
+          x[i],
+          'features[$i]',
+          'beat features must be finite, not NaN or Inf',
+        );
+      }
+    }
     final x32 = Float32List.fromList(x);
     final total = List<double>.filled(nClasses, 0.0);
     for (final tree in trees) {

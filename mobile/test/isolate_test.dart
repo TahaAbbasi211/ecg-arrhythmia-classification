@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:ecg_beat_classifier/data/analysis_worker.dart';
@@ -8,12 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// End-to-end check of the isolate path the app actually uses.
 void main() {
   test('analysis runs in an isolate and matches the reference counts', () async {
-    final configJson =
-        jsonDecode(File('assets/ecg_config.json').readAsStringSync())
-            as Map<String, dynamic>;
-    final forestJson =
-        jsonDecode(File('assets/ecg_forest.json').readAsStringSync())
-            as Map<String, dynamic>;
+    final configJson = File('assets/ecg_config.json').readAsStringSync();
+    final forestJson = File('assets/ecg_forest.json').readAsStringSync();
     final raw = parseSignalText(
       File('assets/samples/record_200.csv').readAsStringSync(),
     ).values;
@@ -38,12 +33,8 @@ void main() {
   });
 
   test('isolate path reports no beats for a flat signal', () async {
-    final configJson =
-        jsonDecode(File('assets/ecg_config.json').readAsStringSync())
-            as Map<String, dynamic>;
-    final forestJson =
-        jsonDecode(File('assets/ecg_forest.json').readAsStringSync())
-            as Map<String, dynamic>;
+    final configJson = File('assets/ecg_config.json').readAsStringSync();
+    final forestJson = File('assets/ecg_forest.json').readAsStringSync();
 
     final payload = await analyzeInIsolate(
       raw: List<double>.filled(360 * 20, 0.0),

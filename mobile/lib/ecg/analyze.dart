@@ -52,7 +52,14 @@ class EcgAnalyzer {
 
   /// Run the whole pipeline on a raw signal sampled at [sourceFs].
   EcgResult analyze(List<double> raw, double sourceFs) {
-    final sig = resampleLinear(raw, sourceFs, target: config.sampleRate);
+    // Same order as analyze_reference: clean, resample (anti-aliased when the
+    // source is faster than 360 Hz), band-pass, then detect.
+    final rate = checkSampleRate(sourceFs);
+    final sig = to360Hz(
+      sanitizeSignal(raw, rate),
+      rate,
+      target: config.sampleRate,
+    );
     final sigF = filtFilt(config.sosMain, sig);
     final peaks = detectRPeaks(sigF, config.sosDet, sampleRate: config.sampleRate);
 
@@ -80,6 +87,8 @@ class EcgAnalyzer {
         pred: const <int>[],
         proba: const <List<double>>[],
         sampleRate: config.sampleRate,
+        p1: percentile(sigF, 1),
+        p99: percentile(sigF, 99),
       );
     }
 
@@ -107,6 +116,8 @@ class EcgAnalyzer {
       proba: proba,
       sampleRate: config.sampleRate,
       referenceMedianRr: medRr,
+      p1: percentile(sigF, 1),
+      p99: percentile(sigF, 99),
     );
   }
 }
@@ -121,6 +132,8 @@ class EcgResult {
     required this.proba,
     required this.sampleRate,
     this.referenceMedianRr,
+    this.p1 = 0.0,
+    this.p99 = 0.0,
   });
 
   /// The filtered signal at 360 Hz.
@@ -143,6 +156,11 @@ class EcgResult {
   /// The recording-level median R-R (in samples) the reference used for the
   /// features. Null when no beat was analyzed.
   final double? referenceMedianRr;
+
+  /// 1st and 99th percentile of the filtered signal. The plot scales its
+  /// vertical axis from these, so one spike cannot squash the whole trace.
+  final double p1;
+  final double p99;
 
   int get beatCount => pred.length;
 
