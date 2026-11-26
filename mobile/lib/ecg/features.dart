@@ -86,7 +86,7 @@ List<double> beatFeatures(
   }
 
   final shapeDen = p2p + 1e-8;
-  final out = List<double>.filled(featureCount, 0.0);
+  final out = List<double>.filled(57, 0.0);
   out[0] = prevRr.toDouble();
   out[1] = nextRr.toDouble();
   out[2] = prevRr / nextRr;

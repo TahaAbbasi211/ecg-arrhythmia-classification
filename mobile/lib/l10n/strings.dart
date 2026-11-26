@@ -20,7 +20,7 @@ class AppStrings {
   bool get isFa => isPersian(context);
 
   String get appTitle => isFa ? 'طبقه‌بندی ضربان قلب ECG' : 'ECG Beat Classifier';
-  String get appVersion => 'V2.1.0';
+  String get appVersion => 'V3.1.0';
 
   String get appTagline => isFa
       ? 'طبقه‌بندی ضربان‌های تک‌لید به دسته‌های N، S و V. تمام پردازش‌ها کاملاً آفلاین روی گوشی اجرا می‌شوند.'
@@ -70,11 +70,11 @@ class AppStrings {
 
   String get amplitudeWarningTitle => isFa ? 'واحد سیگنال مشکوک است' : 'The signal unit looks wrong';
   String amplitudeTooSmall(String value) => isFa
-      ? 'دامنه سیگنال پس از فیلتر فقط $value است. یک ECG معمولی حدود ۱ میلی‌ولت است، پس شاید فایل بر حسب ولت باشد.'
-      : 'The filtered signal spans only $value. A normal ECG spans about 1 mV, so the file is probably in volts.';
+      ? 'دامنه سیگنال پس از فیلتر فقط $value است. طبقه‌بندی مدل اکنون مقیاس‌ناورداست و تغییر نمی‌کند، اما احتمالاً فایل بر حسب ولت است و تبدیل واحد برای نمایش دقیق محور عمودی (mV) در نمودار است.'
+      : 'The filtered signal spans only $value. Model classification is scale-invariant, so predictions stay unchanged, but the file is probably in volts; converting updates the mV vertical axis on the plot.';
   String amplitudeTooLarge(String value) => isFa
-      ? 'دامنه سیگنال پس از فیلتر حدود $value است. شاید فایل بر حسب میکروولت یا شمارنده خام ADC باشد.'
-      : 'The filtered signal spans about $value. The file is probably in microvolts or raw ADC counts.';
+      ? 'دامنه سیگنال پس از فیلتر حدود $value است. طبقه‌بندی مدل اکنون مقیاس‌ناورداست و تغییر نمی‌کند، اما احتمالاً فایل بر حسب میکروولت یا شمارنده خام ADC است و تبدیل واحد برای نمایش دقیق محور عمودی (mV) در نمودار است.'
+      : 'The filtered signal spans about $value. Model classification is scale-invariant, so predictions stay unchanged, but the file is probably in microvolts or raw ADC counts; converting updates the mV vertical axis on the plot.';
   String get continueAnyway => isFa ? 'ادامه' : 'Continue anyway';
   String convertToUnit(String unit) =>
       isFa ? 'تبدیل به $unit و تحلیل دوباره' : 'Convert to $unit and analyze again';
@@ -140,16 +140,20 @@ class AppStrings {
 
   String get limitationsTitle => isFa ? 'محدودیت‌ها' : 'Limitations';
   String get limitationS => isFa
-      ? 'ضربان‌های S ضعیف‌تر هستند: از نظر شکل موج بسیار شبیه ضربان‌های نرمال بوده و عمدتاً در زمان‌بندی تفاوت دارند.'
-      : 'S beats are weak: they look very similar to normal beats and differ mostly in timing.';
+      ? 'ضربان‌های S ضعیف‌ترند (F1 کل ۰.۱۷۹ و روی ۲۱ بیمار بدون رکورد ۲۳۲ برابر ۰.۴۰۷): از نظر شکل موج بسیار شبیه ضربان‌های نرمال بوده و عمدتاً در زمان‌بندی و موج P تفاوت دارند.'
+      : 'S beats are weak overall (F1 0.179 across DS2; 0.407 excluding record 232): they look very similar to normal beats and differ mostly in timing and P-wave shape.';
+
+  String get limitationSustainedAtrial => isFa
+      ? 'در ریتم‌های دهلیزی مداوم که اکثر ضربان‌های نوار غیرطبیعی‌اند (مانند رکورد ۲۳۲)، الگوی میانه بیمار و ریتم محلی با خود ریتم غیرطبیعی تنظیم می‌شوند و حساسیت S کاهش می‌یابد.'
+      : 'In sustained ectopic atrial rhythms where most beats in the strip are abnormal (such as MIT-BIH record 232), the recording-median template and local rhythm adapt to the abnormal rhythm, reducing S recall.';
 
   String get limitationF => isFa
       ? 'ضربان‌های ترکیبی یا فیوژن (F) توسط این مدل پیش‌بینی نمی‌شوند.'
       : 'Fusion (F) beats are not predicted at all.';
 
   String get limitationSingleLead => isFa
-      ? 'فقط تک‌لید و فقط یک پایگاه داده؛ بر روی سایر دستگاه‌ها یا جوامع اعتبارسنجی نشده است.'
-      : 'Single lead only, and only one database. Not validated on other devices or populations.';
+      ? 'فقط تک‌لید و ارزیابی‌شده روی پایگاه‌های داده پژوهشی (MIT-BIH و SVDB)؛ بر روی سایر دستگاه‌ها یا جوامع بالینی اعتبارسنجی نشده است.'
+      : 'Single lead only, evaluated on research databases (MIT-BIH and SVDB). Not validated on other devices or clinical populations.';
 
   String get beatsAnalyzed => isFa ? 'تعداد ضربان‌های تحلیل‌شده' : 'Beats analyzed';
   String get heartRate => isFa ? 'ضربان قلب' : 'Heart rate';

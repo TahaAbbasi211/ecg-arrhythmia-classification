@@ -74,7 +74,7 @@ Future<List<double>> loadSampleValues(SampleRecord sample) async {
 }
 
 String? _configJson;
-String? _forestJson;
+String? _modelJson;
 
 /// Run the pipeline off the UI thread on [raw] sampled at [sourceFs].
 Future<AnalysisPayload> runAnalysis({
@@ -82,11 +82,11 @@ Future<AnalysisPayload> runAnalysis({
   required double sourceFs,
 }) async {
   _configJson ??= await rootBundle.loadString('assets/ecg_config.json');
-  _forestJson ??= await rootBundle.loadString('assets/ecg_forest.json');
+  _modelJson ??= await rootBundle.loadString('assets/ecg_model_v3.json');
   return analyzeInIsolate(
     raw: raw,
     sourceFs: sourceFs,
     configJson: _configJson!,
-    forestJson: _forestJson!,
+    modelJson: _modelJson!,
   );
 }

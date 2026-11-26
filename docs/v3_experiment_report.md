@@ -93,7 +93,9 @@ All candidates were evaluated on the exact same 5 `StratifiedGroupKFold` splits 
 | `v3_mlp_64_32_unw` | Scaler+MLP(64,32) / v3 | `[1, 0.25, 0.5, 0]` | 0.980 | 0.330 | 0.852 | 0.721 | 0.706 | 0.957 | 0.074 | 5.9e-08 | 1.45 |
 | `v3_mlp_64_32_ovs` | Scaler+MLP(64,32, ovs=0.15) / v3 | `[1, 1.5, 0.25, 0]` | 0.974 | 0.344 | 0.808 | 0.708 | 0.700 | 0.945 | 0.074 | 8.2e-09 | 0.49 |
 | `v3_hgb_120_l15_unw_3cls` | HGB(120, leaf=15, unw, 3-cls fit) | `[1, 0.5, 0.75, 0]` | 0.978 | **0.378** | 0.879 | 0.745 | 0.711 | 0.957 | 0.299 | 8.9e-09 | 0.23 |
-| **`v3_hgb_100_l15_bal_3cls`** | **HGB(100, leaf=15, bal, 3-cls fit)** | **`[1, 0.25, 0.5, 0]`** | **0.978** | 0.364 | **0.899** | **0.747** | **0.741** | **0.956** | **0.162** | **3.1e-08** | **0.19** |
+| **`v3_hgb_100_l15_bal_3cls`** | **HGB(100, leaf=15, bal, 3-cls fit)** | **`[1, 0.25, 0.5, 0]`** | **0.978** | 0.364 | **0.899** | **0.747** | **0.741** | **0.956** | **0.162** | **3.1e-08** | **296.3** |
+
+> **Timing Unit Correction (`1000×`):** In Phase 1, `scripts/train_v3.py` mistakenly multiplied `time.perf_counter()` seconds by `1000.0 / len(probe)` instead of `1_000_000.0 / len(probe)`, under-reporting loop speeds in the other rows above by `1000×` (re-measured on the exported `v3.1` model with the fixed formula in `scripts/export_v3_model.py`: **`296.26 ms / 1k beats`**).
 
 **Frozen Winner Selected on `DS1` CV:** **`v3_hgb_100_l15_bal_3cls`** (`HistGradientBoostingClassifier(max_iter=100, max_leaf_nodes=15, learning_rate=0.08, min_samples_leaf=30, l2_regularization=1.0, random_state=42)` trained with balanced sample weights on `N, S, V` only, with frozen OOF weights `[1.0, 0.25, 0.5, 0.0]`). It achieves the highest `DS1` OOF Macro F1 (`0.747`), the highest **nested fold-out** Macro F1 (`0.741`), and exports to just **162,294 bytes (`0.162 MB`)** — **7.8× smaller** than `v2.1`'s `1.275 MB` JSON.
 
@@ -192,7 +194,7 @@ Implemented as a standalone prototype (`detect_rpeaks_v3_proto` in `scripts/trai
 
 - **Winning Model:** `v3_hgb_100_l15_bal_3cls` (`HistGradientBoostingClassifier`, 100 iterations × 3 classes, max 15 leaves/tree, decision weights `[1.0, 0.25, 0.5, 0.0]`).
 - **Compact JSON Artifact Size:** **162,294 bytes (`0.162 MB`)** — **7.8× smaller** than `v2.1`'s `1.275 MB` Random Forest (`export/ecg_forest.json`) and far under the `3 MB` mobile/web budget.
-- **Inference Speed & Parity:** `0.19 ms` per 1,000 beats in pure Python loops (`~0.4 ms` for an entire 30-minute MIT-BIH recording after feature extraction); max probability difference vs `scikit-learn` is `3.05e-8`.
+- **Inference Speed & Parity:** `296.26 ms` per 1,000 beats in pure Python loops (`~0.68 s` for an entire ~2,300-beat 30-minute MIT-BIH recording after feature extraction; corrected from the `0.19 ms` `1000×` unit typo in Phase 1); max probability difference vs `scikit-learn` is `3.05e-8` on DS1 CV (`2.25e-6` across 9,933 DS2 beats for `export/ecg_model_v3.json`, `0` label flips).
 - **Phase 2 Porting Recommendation:**
   1. **Promote `v3_hgb_100_l15_bal_3cls` + `features_v3`** to Python (`src/portable.py` / `src/pipeline.py`), Dart (`mobile/lib/ecg`), and BioVanta JS: implementing `HGB` inference requires only ~25 lines of tree-traversal + `exp`/softmax arithmetic on top of the existing tree walker, while shrinking app/web bundle size by >1.1 MB.
   2. **Promote the `spki_ref`-floored `detect_rpeaks_v3_proto` logic** into `src/portable.py` and Dart/JS so mid-recording `0.2×` amplitude drops no longer lose all remaining beats while keeping MIT-BIH Sensitivity `> 99.6%` and PPV `> 99.0%`.

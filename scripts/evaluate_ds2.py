@@ -72,6 +72,7 @@ def evaluate(fn, bundle, records=DS2, tolerance=36):
     precision, recall, f1, support = precision_recall_fscore_support(
         y_true, y_pred, labels=[0, 1, 2, 3], zero_division=0)
     macro = float(f1_score(y_true, y_pred, labels=[0, 1, 2], average="macro"))
+    acc = float(np.mean(np.asarray(y_true) == np.asarray(y_pred))) if y_true else 0.0
     return {
         "annotated": n_ann,
         "detected": n_det,
@@ -79,6 +80,7 @@ def evaluate(fn, bundle, records=DS2, tolerance=36):
         "sensitivity": n_tp / n_ann,
         "positive_predictivity": n_tp / n_det,
         "offset_percentiles_5_50_95": [float(v) for v in np.percentile(offsets, [5, 50, 95])],
+        "accuracy": acc,
         "macro_f1": macro,
         "per_class": {
             CLASSES[c]: {
@@ -104,7 +106,8 @@ def report(result, name):
     print("offset percentiles 5/50/95:", result["offset_percentiles_5_50_95"])
     print(classification_report(result["y_true"], result["y_pred"], labels=[0, 1, 2, 3],
                                 target_names=CLASSES, digits=3, zero_division=0))
-    print("macro F1 (N,S,V):", round(result["macro_f1"], 3))
+    print("macro F1 (N,S,V):", round(result["macro_f1"], 3),
+          "| accuracy:", round(result["accuracy"], 4))
     slowest = sorted(result["per_record"].items(), key=lambda kv: -kv[1]["seconds"])[:3]
     print("slowest records:", [(r, v["seconds"]) for r, v in slowest])
 
@@ -113,13 +116,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scipy", action="store_true",
                     help="evaluate the scipy + wfdb XQRS reference instead of the portable pipeline")
+    ap.add_argument("--model", default=None,
+                    help="path to model JSON or joblib bundle (defaults to export/ecg_model_v3.json)")
     ap.add_argument("--json", help="write the results to this JSON file")
     ap.add_argument("--records", nargs="*", type=int, default=DS2)
     args = ap.parse_args()
 
-    bundle = load_model(os.path.join(ROOT, "models", "ecg_rf_small.joblib"))
+    bundle = load_model(args.model)
     fn = analyze if args.scipy else analyze_portable
-    name = "scipy + XQRS reference" if args.scipy else "portable pipeline (Pan-Tompkins + 50-tree forest)"
+    name = "scipy + XQRS reference" if args.scipy else "portable pipeline (Pan-Tompkins + v3.1 HGB)"
     result = evaluate(fn, bundle, args.records)
     report(result, name)
 

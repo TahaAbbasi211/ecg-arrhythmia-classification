@@ -22,7 +22,7 @@ def _app():
 def test_sample_record_analyzes_without_exceptions():
     app = _app()
     metrics = {m.label: m.value for m in app.metric}
-    # The default sample is record_100.csv; these are its v2.1 numbers.
+    # The default sample is record_100.csv; these are its v3.1 numbers.
     assert int(metrics["Beats analyzed"]) == 73
     assert metrics["Heart rate (bpm)"] == "75"
     assert int(metrics["Supraventricular (S)"]) == 5
@@ -30,6 +30,17 @@ def test_sample_record_analyzes_without_exceptions():
     # The plot controls rendered, including the start-time slider the 60 s sample needs.
     assert [s.label for s in app.slider][:2] == ["Window length (seconds)",
                                                 "Start time (seconds)"]
+    # Abnormal-beat table reports normalized relative score instead of raw probability.
+    assert len(app.dataframe) == 1
+    df = app.dataframe[0].value
+    assert "score" in df.columns
+    assert "probability" not in df.columns
+    assert any("uncalibrated" in str(c.value).lower() for c in app.caption)
+    # About expander reflects v3.1 metrics and record 232 limitation.
+    about_md = "\n".join(str(m.value) for m in app.markdown)
+    assert "0.701" in about_md
+    assert "SVDB" in about_md
+    assert "232" in about_md
     assert not app.error
 
 

@@ -6,9 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// End-to-end check of the isolate path the app actually uses.
 void main() {
-  test('analysis runs in an isolate and matches the reference counts', () async {
+  test('analysis runs in an isolate and matches the v3.1 reference counts',
+      () async {
     final configJson = File('assets/ecg_config.json').readAsStringSync();
-    final forestJson = File('assets/ecg_forest.json').readAsStringSync();
+    final modelJson = File('assets/ecg_model_v3.json').readAsStringSync();
     final raw = parseSignalText(
       File('assets/samples/record_200.csv').readAsStringSync(),
     ).values;
@@ -17,11 +18,10 @@ void main() {
       raw: raw,
       sourceFs: 360,
       configJson: configJson,
-      forestJson: forestJson,
+      modelJson: modelJson,
     );
 
-    // Reference values for the bundled 60 s record 200 CSV, produced by
-    // `portable.analyze_reference` in the Python project.
+    // Reference values for the bundled 60 s record 200 CSV under v3.1.
     expect(payload.beatCount, 81);
     expect(payload.countOf(0), 37);
     expect(payload.countOf(1), 0);
@@ -30,20 +30,22 @@ void main() {
     expect(payload.heartRate!, closeTo(89.26, 0.05));
     expect(payload.signal.length, raw.length);
     expect(payload.proba.length, payload.beatCount);
+    expect(payload.scores.length, payload.beatCount);
   });
 
   test('isolate path reports no beats for a flat signal', () async {
     final configJson = File('assets/ecg_config.json').readAsStringSync();
-    final forestJson = File('assets/ecg_forest.json').readAsStringSync();
+    final modelJson = File('assets/ecg_model_v3.json').readAsStringSync();
 
     final payload = await analyzeInIsolate(
       raw: List<double>.filled(360 * 20, 0.0),
       sourceFs: 360,
       configJson: configJson,
-      forestJson: forestJson,
+      modelJson: modelJson,
     );
 
     expect(payload.beatCount, 0);
     expect(payload.heartRate, isNull);
+    expect(payload.scores, isEmpty);
   });
 }

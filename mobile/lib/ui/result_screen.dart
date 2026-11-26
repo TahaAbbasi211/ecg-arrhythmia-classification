@@ -239,7 +239,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   return _BeatRow(
                     timeSeconds: payload.peaks[index] / fs,
                     classIndex: payload.pred[index],
-                    proba: payload.proba[index],
+                    scores: payload.scores[index],
                     onTap: () => _jumpToSample(payload.peaks[index]),
                   );
                 },
@@ -421,18 +421,18 @@ class _CountBarChart extends StatelessWidget {
   }
 }
 
-/// One S or V beat: time, class and probability.
+/// One S or V beat: time, class and normalized decision score.
 class _BeatRow extends StatelessWidget {
   const _BeatRow({
     required this.timeSeconds,
     required this.classIndex,
-    required this.proba,
+    required this.scores,
     required this.onTap,
   });
 
   final double timeSeconds;
   final int classIndex;
-  final List<double> proba;
+  final List<double> scores;
   final VoidCallback onTap;
 
   @override
@@ -478,7 +478,7 @@ class _BeatRow extends StatelessWidget {
                 ),
               ),
               Text(
-                'p = ${proba[classIndex].toStringAsFixed(2)}',
+                'score = ${scores[classIndex].toStringAsFixed(2)}',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: scheme.onSurfaceVariant),
               ),

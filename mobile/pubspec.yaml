@@ -1,7 +1,7 @@
 name: ecg_beat_classifier
 description: "ECG Beat Classifier - offline single-lead heartbeat classification (N, S, V)."
 publish_to: 'none'
-version: 2.1.0+3
+version: 3.1.0+4
 
 environment:
   sdk: ^3.9.0
@@ -22,7 +22,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/ecg_config.json
-    - assets/ecg_forest.json
+    - assets/ecg_model_v3.json
     - assets/samples/record_100.csv
     - assets/samples/record_200.csv
     - assets/samples/record_233.csv
