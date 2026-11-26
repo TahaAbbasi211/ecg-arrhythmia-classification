@@ -70,8 +70,12 @@ def _stretch_width_kwargs(version=None):
 
 
 st.title("🫀 ECG Arrhythmia Classifier")
-st.caption("Classifies each heartbeat as Normal (N), Supraventricular premature (S) "
-           "or Ventricular premature (V).")
+st.caption(
+    "Classifies each heartbeat as Normal (N), Supraventricular premature (S) "
+    "or Ventricular premature (V). "
+    "Research and non-clinical software — not a certified medical device and "
+    "not intended for clinical diagnosis or treatment decisions."
+)
 
 # ---------- input ----------
 source = st.sidebar.radio("Signal source", ["Sample record", "Upload CSV"])
@@ -229,5 +233,6 @@ with st.expander("About this model"):
         "beats, so this class is weak.\n"
         "- Fusion (F) beats are not predicted: there was too little training data and "
         "boosting them caused many false alarms.\n"
-        "- Not validated on other devices or populations. Not for diagnosis."
+        "- Not validated on other devices or populations. Research and non-clinical software — "
+        "not a certified medical device and not intended for clinical diagnosis or treatment decisions."
     )

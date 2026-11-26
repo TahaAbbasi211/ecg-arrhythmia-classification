@@ -2,6 +2,8 @@
 
 Classifies individual heartbeats from single-lead ECG signals as **Normal (N)**, **Supraventricular premature (S)** or **Ventricular premature (V)** using machine learning. Includes a Streamlit demo and a **fully offline Android app**.
 
+> **Disclaimer:** Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.
+
 ![App screenshot](docs/app_demo.png)
 
 **[Download the Android app (APK)](https://github.com/TahaAbbasi211/ecg-arrhythmia-classification/releases/latest)**: runs fully offline, no data leaves the phone.
@@ -16,7 +18,7 @@ Classifies individual heartbeats from single-lead ECG signals as **Normal (N)**,
 
 ## Dataset
 
-[MIT-BIH Arrhythmia Database](https://physionet.org/content/mitdb/1.0.0/) (PhysioNet): 48 half-hour two-lead recordings at 360 Hz with beat-by-beat expert annotations. Only the first lead (MLII) is used.
+[MIT-BIH Arrhythmia Database](https://physionet.org/content/mitdb/1.0.0/) (PhysioNet): 48 half-hour two-lead recordings at 360 Hz with beat-by-beat expert annotations. Only lead MLII is used.
 
 - Annotations are grouped into the standard AAMI classes (N, S, V, F, Q).
 - The four paced records (102, 104, 107, 217) are excluded, following AAMI recommendations.
@@ -48,7 +50,7 @@ Overall accuracy 0.933, macro F1 over N, S and V: 0.688.
 ## Android app
 
 - Fully offline: no internet permission, all processing and the model run on the phone. English and Persian (with right-to-left layout), switchable in the app.
-- Pure Dart port of the pipeline in `mobile/lib/ecg`. Correctness is checked with golden test vectors generated from the Python reference (`export/test_vectors.json`): the filter, R-peak detector, features, forest and the end-to-end result are each compared with the Python output. The resampler is additionally pinned to a shared fixture (`export/resample_parity.json`) that both `pytest` and `flutter test` read. 51 Flutter tests in total.
+- Pure Dart port of the pipeline in `mobile/lib/ecg`. Correctness is checked with golden test vectors generated from the Python reference (`export/test_vectors.json`): the filter, R-peak detector, features, forest and the end-to-end result are each compared with the Python output. The resampler is additionally pinned to a shared fixture (`export/resample_parity.json`) that both `pytest` and `flutter test` read. Covered by an automated Flutter test suite.
 - A 30-minute recording (650,000 samples) is analyzed in under a second on a PC.
 - Build instructions and signing: see `mobile/README.md` and `mobile/android/SIGNING.md`.
 
@@ -62,7 +64,7 @@ Overall accuracy 0.933, macro F1 over N, S and V: 0.688.
 
 ## v2.1 (hardening release)
 
-The model did not change: `models/ecg_rf_small.joblib` (50 trees) and its 57 features are the same file as v2.0.0, and the DS2 results below were re-measured end to end after the changes. What changed is everything around the model:
+The model did not change: `models/ecg_rf_small.joblib` (50 trees) and its 57 features are the same file as v2.0.0, and the DS2 results above were re-measured end to end after the changes. What changed is everything around the model:
 
 - **Input handling (both apps)**: CSV files may have one column or `(time, ecg)` (the time axis is detected by its header or by being evenly increasing and never used as the ECG), `#` and `//` comment lines, a BOM, `;` or tab separators, and broken or non-UTF-8 text now shows an error instead of crashing.
 - **Units and polarity**: an input unit selector (mV, V, uV) and a manual invert switch. After filtering, a spread of `p99 - p1` below 0.05 or above 20 suggests the wrong unit; the app says so and offers a one-click conversion, but never converts on its own.
@@ -91,13 +93,13 @@ Set the sampling rate, choose the input unit (mV by default) and invert the pola
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                 # parsing, DSP, pipeline, app smoke test (48 tests)
+pytest -q                 # parsing, DSP, pipeline, app smoke tests
 cd mobile
 flutter analyze
-flutter test              # portable reference, plot, screens, localization (51 tests)
+flutter test              # portable reference, plot, screens, localization
 ```
 
-`python scripts/evaluate_ds2.py` reproduces the DS2 numbers below with the portable pipeline (`--scipy` switches to the wfdb/XQRS reference). `python scripts/export_test_vectors.py` regenerates the golden vectors, and `python scripts/export_resample_parity.py` the resampling fixture.
+`python scripts/evaluate_ds2.py` reproduces the DS2 numbers above with the portable pipeline (`--scipy` switches to the wfdb/XQRS reference). `python scripts/export_test_vectors.py` regenerates the golden vectors, and `python scripts/export_resample_parity.py` the resampling fixture.
 
 ## Reproduce
 

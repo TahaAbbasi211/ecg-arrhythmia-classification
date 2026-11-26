@@ -124,14 +124,17 @@ def read_signal_frame(text):
     return frame
 
 
-def looks_like_time(name, values):
-    """True for a header that says 'time', or a strictly increasing, even column."""
+def _has_time_header(name):
+    """True when the column header names a time or sample-index axis."""
     lowered = str(name).strip().lower()
     # A single "t" must be an exact match: "voltage" or "rate" contain it.
     if lowered == "t":
         return True
-    if any(hint in lowered for hint in TIME_HEADER_HINTS):
-        return True
+    return any(hint in lowered for hint in TIME_HEADER_HINTS)
+
+
+def _looks_like_time_values(values):
+    """True for a strictly increasing, evenly spaced numeric sequence."""
     values = np.asarray(values, dtype=float)
     if values.size < 2 or not np.all(np.isfinite(values)):
         return False
@@ -143,6 +146,11 @@ def looks_like_time(name, values):
         return False
     # Writers round the time axis, so allow a few percent of jitter.
     return bool(np.max(np.abs(diffs - step)) <= 0.05 * step)
+
+
+def looks_like_time(name, values):
+    """True for a header that says 'time', or a strictly increasing, even column."""
+    return _has_time_header(name) or _looks_like_time_values(values)
 
 
 def heart_rate_bpm(peaks, fs):
@@ -159,20 +167,31 @@ def heart_rate_bpm(peaks, fs):
 
 
 def describe_columns(frame):
-    """Return (signal candidates, detected time column or None)."""
+    """Return (signal candidates, detected time column label or None)."""
     usable = [column for column in frame.columns if frame[column].notna().sum() >= 2]
     if not usable:
         raise ValueError("that file has no numeric column with at least two values")
 
-    time_column = None
-    for column in usable:
-        if looks_like_time(column, frame[column].to_numpy(dtype=float)):
-            time_column = column
-            break
-
-    candidates = [column for column in usable if column != time_column]
-    if not candidates:
+    time_columns = [column for column in usable if _has_time_header(column)]
+    remaining = [column for column in usable if column not in set(time_columns)]
+    if not remaining:
         raise ValueError("that file only holds a time axis, no ECG values")
+
+    monotonic = [
+        column for column in remaining
+        if _looks_like_time_values(frame[column].to_numpy(dtype=float))
+    ]
+    non_monotonic = [column for column in remaining if column not in set(monotonic)]
+    if non_monotonic:
+        time_set = set(time_columns) | set(monotonic)
+        time_columns = [column for column in usable if column in time_set]
+        candidates = non_monotonic
+    elif time_columns:
+        candidates = remaining
+    else:
+        raise ValueError("that file only holds a time axis, no ECG values")
+
+    time_column = ", ".join(time_columns) if time_columns else None
     return candidates, time_column
 
 

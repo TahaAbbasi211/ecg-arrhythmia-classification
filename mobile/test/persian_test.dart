@@ -78,6 +78,29 @@ void main() {
     expect(find.text('0.923'), findsOneWidget);
     expect(find.text('0.177'), findsOneWidget);
     expect(find.text('0.688'), findsOneWidget);
-    expect(find.textContaining('پروژه آموزشی و پژوهشی'), findsOneWidget);
+    expect(find.textContaining('نرم‌افزار پژوهشی و غیربالینی'), findsOneWidget);
+  });
+
+  testWidgets('language tooltip matches the active locale', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrapFa(const HomeScreen()));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('تغییر زبان به انگلیسی'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('en'), Locale('fa')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: buildAppTheme(Brightness.light),
+        home: const HomeScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Switch to Persian'), findsOneWidget);
   });
 }

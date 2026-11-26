@@ -147,3 +147,34 @@ def test_forest_predict_proba_rejects_non_finite_features(root):
         features[7] = bad
         with pytest.raises(ValueError, match="finite"):
             portable.forest_predict_proba(forest, features)
+
+
+def test_500hz_record_200_preserves_all_81_beats_and_predictions(root, bundle):
+    from app.signal_io import read_signal_frame
+
+    path = os.path.join(root, "app", "samples", "record_200.csv")
+    with open(path, encoding="utf-8-sig") as handle:
+        sig_360 = read_signal_frame(handle.read())["MLII_mV"].to_numpy(dtype=float)
+
+    sig_500 = portable.resample_linear(sig_360, 360, target=500)
+    out_360 = pipeline.analyze_portable(sig_360, 360, bundle)
+    out_500 = pipeline.analyze_portable(sig_500, 500, bundle)
+
+    assert len(out_360["peaks"]) == 81
+    assert len(out_500["peaks"]) == 81
+    assert [int((out_500["pred"] == c).sum()) for c in range(3)] == [37, 0, 44]
+    assert np.array_equal(out_500["pred"], out_360["pred"])
+
+
+def test_filtfilt_and_detect_rpeaks_handle_empty_and_tiny_inputs(root):
+    cfg = _load(root, "ecg_config.json")
+    sos_main = np.asarray(cfg["sos_main"], dtype=float)
+    sos_det = np.asarray(cfg["sos_det"], dtype=float)
+
+    empty = portable.filtfilt(sos_main, [])
+    assert empty.shape == (0,)
+    assert empty.dtype == float
+
+    short = portable.detect_rpeaks(np.zeros(3), sos_det)
+    assert short.shape == (0,)
+    assert short.dtype == int
