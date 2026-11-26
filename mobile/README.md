@@ -25,8 +25,6 @@ Everything runs on the device: filtering, R-peak detection, the 57 beat features
 50-tree Random Forest are pure Dart. There is no network code, no analytics and no ML
 plugin, and the release manifest has no `INTERNET` permission.
 
-> Educational project, not a medical device.
-
 ## Requirements
 
 - Flutter 3.47 or newer (Dart 3.13+)

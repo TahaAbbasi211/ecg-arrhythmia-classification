@@ -60,7 +60,7 @@ def _set_unit(unit):
 
 st.title("🫀 ECG Arrhythmia Classifier")
 st.caption("Classifies each heartbeat as Normal (N), Supraventricular premature (S) "
-           "or Ventricular premature (V). Educational project, not a medical device.")
+           "or Ventricular premature (V).")
 
 # ---------- input ----------
 source = st.sidebar.radio("Signal source", ["Sample record", "Upload CSV"])
