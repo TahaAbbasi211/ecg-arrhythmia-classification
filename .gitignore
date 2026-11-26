@@ -1,5 +1,6 @@
 # Data (big files, downloaded separately)
-data/
+/data/
+/notebooks/data/
 
 # Python
 __pycache__/

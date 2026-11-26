@@ -5,6 +5,7 @@ The parsing rules here mirror mobile/lib/data/signal_parser.dart (comments, a
 """
 
 import os
+import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -56,6 +57,16 @@ def run_analysis(sig, fs):
 
 def _set_unit(unit):
     st.session_state["sig_unit"] = unit
+
+
+def _stretch_width_kwargs(version=None):
+    """Return full-width kwargs compatible with Streamlit <1.49 and >=1.49."""
+    raw = st.__version__ if version is None else version
+    match = re.match(r"^\s*(\d+)(?:\.(\d+))?", str(raw))
+    parsed = (int(match.group(1)), int(match.group(2) or 0)) if match else (0, 0)
+    if parsed >= (1, 49):
+        return {"width": "stretch"}
+    return {"use_container_width": True}
 
 
 st.title("🫀 ECG Arrhythmia Classifier")
@@ -208,7 +219,7 @@ with right:
         "class": labels,
         "probability": np.round(proba[np.arange(len(pred)), pred], 2),
     })
-    st.dataframe(beats[beats["class"] != "N"], height=250, width="stretch")
+    st.dataframe(beats[beats["class"] != "N"], height=250, **_stretch_width_kwargs())
 
 with st.expander("About this model"):
     st.markdown(

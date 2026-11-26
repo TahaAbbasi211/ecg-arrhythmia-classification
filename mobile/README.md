@@ -181,7 +181,7 @@ wrong, and are handled explicitly:
 
 ## Data and results
 
-MIT-BIH Arrhythmia Database, first lead (MLII) only. Inter-patient split: 22 training
+MIT-BIH Arrhythmia Database, lead MLII only. Inter-patient split: 22 training
 and 22 different test patients.
 
 | Class | F1 |

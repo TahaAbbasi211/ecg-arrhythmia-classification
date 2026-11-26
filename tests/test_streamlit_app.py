@@ -1,7 +1,11 @@
 """Smoke tests for the Streamlit app: it must run, not just import."""
 
+import ast
 import os
+import re
 
+import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 APP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -40,3 +44,35 @@ def test_upload_tab_offers_the_unit_and_polarity_controls():
     labels += [box.label for box in app.sidebar.checkbox]
     assert "Input unit" in labels
     assert "Invert polarity" in labels
+
+
+def _load_stretch_width_kwargs():
+    with open(APP, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=APP)
+    fn_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_stretch_width_kwargs"
+    )
+    namespace = {"re": re, "st": st}
+    exec(compile(ast.Module(body=[fn_node], type_ignores=[]), APP, "exec"), namespace)
+    return namespace["_stretch_width_kwargs"]
+
+
+@pytest.mark.parametrize("version,expected", [
+    ("1.35.0", {"use_container_width": True}),
+    ("1.45.1", {"use_container_width": True}),
+    ("1.48.9", {"use_container_width": True}),
+    ("1.48.1rc1", {"use_container_width": True}),
+    ("1.45.1.dev0", {"use_container_width": True}),
+    ("1.49.0", {"width": "stretch"}),
+    ("1.49.0rc1", {"width": "stretch"}),
+    ("1.49.0.dev20250101", {"width": "stretch"}),
+    ("1.67.0", {"width": "stretch"}),
+    ("2.0.0", {"width": "stretch"}),
+    ("unknown", {"use_container_width": True}),
+])
+def test_stretch_width_kwargs_handles_streamlit_versions(monkeypatch, version, expected):
+    fn = _load_stretch_width_kwargs()
+    assert fn(version) == expected
+    monkeypatch.setattr(st, "__version__", version)
+    assert fn() == expected
