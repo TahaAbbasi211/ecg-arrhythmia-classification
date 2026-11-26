@@ -112,8 +112,6 @@ lib/
     rpeaks.dart       detectRPeaks (Pan-Tompkins style, n < 5 guard)
     features_v3.dart  extractRecordingFeaturesV3 (84 scale-invariant + template + PT features)
     hgb_model.dart    HgbModel.fromJson, predictProba (pure float64, isFinite guard), effectiveScores
-    features.dart     legacy 57-feature helper
-    forest.dart       legacy Random Forest helper
     analyze.dart      EcgConfig, EcgAnalyzer.analyze
   data/           asset loading, signal parser, units, isolate worker
   l10n/           English and Persian strings
