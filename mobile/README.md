@@ -1,4 +1,4 @@
-# ECG Beat Classifier (Android) - V2.1
+# ECG Beat Classifier (Android) - V3.1.0
 
 Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (normal),
 **S** (supraventricular premature) or **V** (ventricular premature).
@@ -10,22 +10,14 @@ Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (no
 - Automatic locale detection (starts in Persian if device language is Persian).
 - Pure on-device offline inference (no internet permission required).
 
-**New in 2.1 (no model change - the 50-tree forest and its 57 features are identical):**
-- The 60 s trace is drawn on a viewport-sized canvas over a scrolling spacer with
-  Min-Max decimation. Before, the whole recording was squeezed into the screen width
-  and the Persian layout scrolled it in the wrong direction.
-- CSV input accepts `(time, ecg)` files, `#`/`//` comments and `;`/tab separators, and
-  reports broken or oversized (> 20 MB) files instead of crashing.
-- Unit selector (mV / V / uV) and a manual polarity switch, plus a warning when the
-  filtered amplitude suggests the wrong unit (nothing is converted automatically).
-- Inputs above 360 Hz are anti-aliased before resampling, in step with the Python
-  reference at 180, 250 and 500 Hz.
-- JSON/forest parsing and CSV parsing run off the UI thread, and the beat list is
-  sorted by time.
+**New in V3.1.0 (`3.1.0+4`):**
+- **Scale-invariant `v3.1` engine:** Upgraded from the `1.275 MB` 50-tree Random Forest (`ecg_forest.json`, removed from assets) and 57 features to a **`163 KB` `HistGradientBoosting` model (`ecg_model_v3.json`)** over **84 scale-invariant features** (`features_v3.dart`), reducing asset size by **>1.1 MB**.
+- **True `float64` HGB inference (`hgb_model.dart`):** Unrounded `float64` split thresholds with an `isFinite` guard across all 84 features (no `Float32List` rounding), matching `scikit-learn` within `2.25e-6` (`0` label flips across `9,933` `DS2` beats).
+- **Scale invariance across Volts, mV, and µV:** Beats are median-centered and normalized by `rec_scale`, so `0.001×`, `1×`, and `1000×` recordings yield identical beat predictions (unit selection remains useful for an accurate `mV` vertical axis on the plot).
+- **Normalized `score` display:** Abnormal (`S`/`V`) beat rows display `score` = `(proba * decision_weights) / sum(proba * decision_weights)` (uncalibrated relative model score) instead of inflated raw unweighted probabilities.
+- **Updated About metrics & limitations:** Displays `DS2` end-to-end F1s (`N 0.972`, `V 0.952`, `S 0.179`, `Macro F1 0.701`) and explicitly explains the sustained ectopic atrial rhythm limitation (e.g., MIT-BIH record `232`) in both English and Persian.
 
-Everything runs on the device: filtering, R-peak detection, the 57 beat features and a
-50-tree Random Forest are pure Dart. There is no network code, no analytics and no ML
-plugin, and the release manifest has no `INTERNET` permission.
+Everything runs on the device: filtering, Pan-Tompkins R-peak detection, 84 v3 features, and the 65-iteration (3-class) gradient-boosted tree ensemble are pure Dart. There is no network code, no analytics and no ML plugin, and the release manifest has no `INTERNET` permission.
 
 ## Requirements
 
@@ -66,14 +58,6 @@ flutter test
 flutter build apk --release --split-per-abi
 ```
 
-The APKs land in `build/app/outputs/flutter-apk/`:
-
-| APK | Size |
-|---|---|
-| `app-armeabi-v7a-release.apk` | 14.9 MB |
-| `app-arm64-v8a-release.apk` | 17.3 MB |
-| `app-x86_64-release.apk` | 18.8 MB |
-
 Signing: release builds require `android/key.properties` pointing to a dedicated release
 keystore (`release.jks`). Without it, Gradle fails closed unless `-PallowDebugRelease=true`
 is explicitly passed for a local debug-signed release build (see `android/SIGNING.md`).
@@ -87,10 +71,6 @@ adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 The release APK requests no permissions at all beyond Flutter's internal
 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; there is no `INTERNET` permission.
 
-The 2.1.0 build reports `versionName=2.1.0`, `versionCode=2003` and is signed
-with the same `CN=Android Debug` certificate as 2.0.0, so it installs over an
-existing copy.
-
 ## Tests
 
 `test/portable_test.dart` replays the golden vectors in `../export/test_vectors.json`,
@@ -101,96 +81,70 @@ recordings:
 |---|---|
 | `filtFilt(raw)` vs `filtered` | max abs diff ≤ 1e-6 |
 | `detectRPeaks(filtered)` vs `detected_peaks` | exact |
-| `beatFeatures` vs `features` | \|a−b\| ≤ 1e-6 + 1e-6·\|b\| |
-| `Forest.predictProba` vs `proba` | abs diff ≤ 1e-5 |
-| `analyze(raw, 360)` vs `used_peaks`, `pred`, `proba` | exact / exact / 1e-5 |
+| `extractRecordingFeaturesV3` (84 features) vs `features` | max abs diff < 1e-10 |
+| `HgbModel.predictProba` & `effectiveScores` | abs diff ≤ 1e-6 |
+| `analyze(raw, 360)` vs `used_peaks`, `pred`, `proba`, `scores` | exact / exact / 1e-6 |
+| Scale invariance (`0.001×`, `1×`, `1000×` on `record_200_100s`) | exact peaks/pred, proba/scores ≤ 1e-6 |
 
 The test file reads the vectors from the repo, so `export/test_vectors.json` is
 deliberately **not** bundled into the app.
 
-`test/portable_test.dart` also replays `../export/resample_parity.json`: the Dart
-resampler must reproduce the Python output within 1e-8 at 180, 250 and 500 Hz, so
-the anti-aliasing filter and the interpolation cannot drift apart.
+`test/portable_test.dart` also replays `../export/resample_parity.json` (180, 250, 500 Hz within `1e-8`), guards `detectRPeaks` on `< 5` samples, and verifies `HgbModel.predictProba` throws `ArgumentError` on `NaN`/`Inf` or wrong feature length.
 
 Four more suites cover the app itself:
 
-- `test/ui_test.dart` — the CSV parser (header, comments, `(time, ecg)` files,
-  Persian/Arabic digits in the rate field) and the home/about screens, including the
-  rate validation, the unit and polarity controls, and the "pick a record first"
-  message.
-- `test/ui_test.dart` also covers the plot geometry: a 60 s recording is 3000 px wide
-  at 400 px per viewport instead of being squeezed in, the trace scrolls left-to-right
-  in Persian, and the Min-Max envelope keeps a one-pixel spike and follows the scroll
-  offset.
-- `test/result_screen_test.dart` — the four summary cards, the plot, the window
-  slider, the live language switch, the S/V beat list in ascending time order with
-  tap-to-jump, the `1:00.0` time format (never `0:60.0`), and a 320 px wide phone
-  in both languages, where a card or legend that does not fit fails the test.
-- `test/persian_test.dart` — every screen in Persian, with its own `tearDown` so the
-  locale cannot leak into another test.
-- `test/isolate_test.dart` — the real isolate path end to end: record 200 gives
-  81 beats (37 N, 0 S, 44 V) at 89.3 bpm, matching `portable.analyze_reference`,
-  and a flat signal reports no beats.
+- `test/ui_test.dart` — CSV parser, home/about screens (`V3.1.0`, `DS2` metrics, sustained atrial rhythm limitation), rate validation, unit/polarity controls, plot geometry, and Min-Max envelope.
+- `test/result_screen_test.dart` — summary cards, plot, window slider, live language switch, S/V beat rows (`score = ...`, default weighted `effectiveScores`), time formatting, and 320 px narrow-phone layout.
+- `test/persian_test.dart` — every screen in Persian with RTL checks and locale cleanup.
+- `test/isolate_test.dart` — isolate execution end to end: `record_200.csv` gives 81 beats (`37 N, 0 S, 44 V`) at `89.3 bpm`, and a flat signal reports no beats.
 
-Measured performance: `analyze()` on a 30-minute signal (650,000 samples) takes
-about 0.6–0.9 s on this machine, and it runs in a background isolate on the phone.
+Measured performance: `analyze()` on a 30.1-minute signal (`650,000` samples, `2,465` beats) finishes in **`~3.3 s`** in the Dart test VM and runs in a background isolate on the phone.
 
 ## Layout
 
 ```
 lib/
   ecg/            pure Dart, no Flutter imports
-    constants.dart    FS, PRE/POST, R, weights
-    stats.dart        numpy-compatible median / argmax / argmin
+    constants.dart    FS, PRE/POST, R, 84 feature constants, v3.1 weights
+    stats.dart        numpy-compatible median / percentile / argmax / argmin
     filter.dart       sosFilt, filtFilt (odd-extension padding, padlen 720)
     resample.dart     sanitizeSignal, anti-alias low-pass, resampleLinear to 360 Hz
-    rpeaks.dart       detectRPeaks (Pan-Tompkins style)
-    features.dart     beatFeatures (57 values)
-    forest.dart       Forest.fromJson, predictProba (float32 casts)
+    rpeaks.dart       detectRPeaks (Pan-Tompkins style, n < 5 guard)
+    features_v3.dart  extractRecordingFeaturesV3 (84 scale-invariant + template + PT features)
+    hgb_model.dart    HgbModel.fromJson, predictProba (pure float64, isFinite guard), effectiveScores
+    features.dart     legacy 57-feature helper
+    forest.dart       legacy Random Forest helper
     analyze.dart      EcgConfig, EcgAnalyzer.analyze
   data/           asset loading, signal parser, units, isolate worker
   l10n/           English and Persian strings
   ui/             home, result, about screens, scrollable plot, theme
 assets/
-  ecg_config.json   filter coefficients + decision weights
-  ecg_forest.json   the 50 exported trees
-  samples/*.csv     three 60 s demo records at 360 Hz
+  ecg_config.json    filter coefficients + v3.1 schema/decision weights
+  ecg_model_v3.json  compact 163 KB exported HistGradientBoosting model
+  samples/*.csv      three 60 s demo records at 360 Hz
 ```
 
 ## Porting notes
 
-The Dart code mirrors `src/portable.py` line for line. The details that are easy to get
-wrong, and are handled explicitly:
+The Dart code mirrors `src/portable.py` and `src/features_v3.py` line for line:
 
 - `np.median` with an even count is the mean of the two middle values.
 - `argmax` / `argmin` / `max(..., key=...)` return the **first** index on ties.
 - `filtfilt` odd extension: `n = min(720, len - 1)`, `left = 2*x[0] - x[n..1]`,
   `right = 2*x[-1] - x[-2..-n-1]`, trim `n` on each side.
 - Biquads are direct form II transposed with zero initial state; `a0` is unused.
-- Standard deviation, skewness and excess kurtosis are population (biased) moments;
-  skewness and kurtosis are 0 when `m2 <= 1e-12`.
-- Features are rounded to float32 before being compared with the float64 thresholds,
-  matching scikit-learn.
-- The recording-level median R-R uses only the beats that are actually analyzed.
-- Bad samples are interpolated before filtering, but more than 5% NaN/Inf or a
-  corrupt run longer than 0.5 s is rejected (`SignalException` in both languages).
-- Resampling to 360 Hz uses a 3rd-order Butterworth low-pass at 150 Hz whenever the
-  source rate is above 360, built from biquads (no scipy in Python either).
-- `detectRPeaks` seeds its thresholds from the median of 2 s block maxima over the
-  first 8 s and a median noise level, not from the first two seconds.
-- The plot's Min-Max envelope is a rendering detail only; it never feeds the model.
+- `HgbModel` compares strictly in IEEE-754 `float64` (`double`) against unrounded `float64` JSON thresholds (never `Float32List`), and refuses `NaN`/`Inf` with `ArgumentError`.
+- `effectiveScores` normalizes `proba * decision_weights` and falls back to `proba` when the weighted sum is `<= 0`.
+- `detectRPeaks` seeds its thresholds from the median of 2 s block maxima over the first 8 s and a median noise level.
 
 ## Data and results
 
-MIT-BIH Arrhythmia Database, lead MLII only. Inter-patient split: 22 training
-and 22 different test patients.
+MIT-BIH Arrhythmia Database, lead MLII only. Inter-patient split: 22 training (`DS1`)
+and 22 unseen test patients (`DS2`), plus zero-retraining external validation on 15 `SVDB` records.
 
-| Class | F1 |
-|---|---|
-| N | 0.965 |
-| V | 0.923 |
-| S | 0.177 |
-| Macro F1 (N, S, V) | 0.688 |
+| Benchmark | N F1 | V F1 | S F1 | Macro F1 `(N, S, V)` | Accuracy |
+|---|---|---|---|---|---|
+| MIT-BIH `DS2` (end-to-end, 22 patients) | **0.972** | **0.952** | **0.179** *(0.407 excl. `232`)* | **0.701** | **94.7%** |
+| PhysioNet `SVDB` (15 records, 128→360 Hz) | **0.983** | **0.737** | **0.762** | **0.827** | **96.4%** |
 
-Limitations: S beats are weak, fusion (F) beats are not predicted, single lead, one
-database.
+Limitations: S beats are weak in sustained ectopic atrial rhythms (`record 232`, 75.2% of `DS2` `S` beats), fusion (`F`) beats are not predicted, `score` is uncalibrated, single lead only, not clinically validated.

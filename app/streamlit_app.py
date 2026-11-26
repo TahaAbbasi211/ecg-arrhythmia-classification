@@ -34,7 +34,7 @@ from src.pipeline import CLASSES, analyze_portable, load_model  # noqa: E402
 from src.portable import SignalError  # noqa: E402
 
 SAMPLES_DIR = os.path.join(ROOT, "app", "samples")
-MODEL_PATH = os.path.join(ROOT, "models", "ecg_rf_small.joblib")
+MODEL_PATH = os.path.join(ROOT, "export", "ecg_model_v3.json")
 
 COLORS = {"N": "#2E9E5B", "S": "#F0A020", "V": "#D63A3A"}
 NAMES = {"N": "Normal", "S": "Supraventricular", "V": "Ventricular"}
@@ -152,19 +152,29 @@ except SignalError as exc:
     st.error(str(exc))
     st.stop()
 
-peaks, pred, proba = res["peaks"], res["pred"], res["proba"]
+peaks, pred, proba, scores = res["peaks"], res["pred"], res["proba"], res["scores"]
 sig_f, fs_ = res["signal"], res["fs"]
 
 # Robust amplitude after the 0.5-40 Hz band-pass: a hint about the input unit,
 # never an automatic conversion.
 amplitude = float(np.percentile(sig_f, 99) - np.percentile(sig_f, 1)) if len(sig_f) else 0.0
 if amplitude < LOW_AMPLITUDE and unit != UNIT_VOLTS:
-    st.warning("The filtered signal spans only %.3f units. The file may be in volts, "
-               "not millivolts (a normal ECG spans about 1 mV)." % amplitude)
+    st.warning(
+        "The filtered signal spans only %.3f units. Model classification is now "
+        "scale-invariant, so beat predictions remain unchanged, but the file may "
+        "be in volts rather than millivolts (a normal ECG spans about 1 mV); "
+        "selecting the right unit ensures an accurate mV vertical axis on the plot."
+        % amplitude
+    )
     st.button("Treat the input as volts (x1000)", on_click=_set_unit, args=(UNIT_VOLTS,))
 elif amplitude > HIGH_AMPLITUDE and unit != UNIT_MICROVOLTS:
-    st.warning("The filtered signal spans %.0f units. The file may be in microvolts "
-               "or raw ADC counts, not millivolts." % amplitude)
+    st.warning(
+        "The filtered signal spans %.0f units. Model classification is now "
+        "scale-invariant, so beat predictions remain unchanged, but the file may "
+        "be in microvolts or raw ADC counts rather than millivolts; selecting the "
+        "right unit ensures an accurate mV vertical axis on the plot."
+        % amplitude
+    )
     st.button("Treat the input as microvolts (x0.001)",
               on_click=_set_unit, args=(UNIT_MICROVOLTS,))
 
@@ -218,21 +228,32 @@ with left:
     st.bar_chart(counts)
 with right:
     st.subheader("Detected S and V beats")
+    st.caption("`score`: relative model score, uncalibrated.")
     beats = pd.DataFrame({
         "time (s)": np.round(peaks / fs_, 2),
         "class": labels,
-        "probability": np.round(proba[np.arange(len(pred)), pred], 2),
+        "score": np.round(scores[np.arange(len(pred)), pred], 2),
     })
     st.dataframe(beats[beats["class"] != "N"], height=250, **_stretch_width_kwargs())
 
 with st.expander("About this model"):
     st.markdown(
-        "- Random Forest (50 trees) trained on the MIT-BIH Arrhythmia Database (22 training patients).\n"
-        "- Evaluated on 22 different patients (inter-patient split).\n"
-        "- Test F1: **N 0.965**, **V 0.923**, **S 0.177**. S beats look very similar to normal "
-        "beats, so this class is weak.\n"
-        "- Fusion (F) beats are not predicted: there was too little training data and "
-        "boosting them caused many false alarms.\n"
-        "- Not validated on other devices or populations. Research and non-clinical software — "
-        "not a certified medical device and not intended for clinical diagnosis or treatment decisions."
+        "- **v3.1.0 HistGradientBoosting** (`max_iter=100`, 65 early-stopped boosting iterations × 3 classes, 84 scale-invariant "
+        "local-rhythm, recording-template, and P/QRS/T features; compact 163 KB JSON) trained "
+        "on the MIT-BIH Arrhythmia Database (22 `DS1` training patients).\n"
+        "- **MIT-BIH `DS2` (22 unseen patients, end-to-end):** **N 0.972**, **V 0.952**, "
+        "**S 0.179** (across 21 patients excluding record `232`: **0.407**), "
+        "**Macro F1 0.701**, **Accuracy 94.7%**.\n"
+        "- **External validation on PhysioNet `SVDB` (15 records, 128 Hz → 360 Hz, zero retraining):** "
+        "**Macro F1 0.827**, **S 0.762**, **V 0.737**, **Accuracy 96.4%**.\n"
+        "- **Sustained atrial rhythm limitation:** Recordings dominated by continuous ectopic "
+        "atrial beats (such as MIT-BIH record `232`, where 77.7% of beats are `S`) shift the "
+        "recording-median beat template and local rhythm baseline toward the abnormal rhythm itself, "
+        "lowering `S` recall in sustained atrial rhythms.\n"
+        "- Fusion (`F`) beats are not predicted: 372 of 414 training `F` beats came from a single "
+        "patient (`208`) and predicting `F` caused severe false alarms.\n"
+        "- `score` is the normalized decision-weighted model score (relative and uncalibrated, "
+        "not a calibrated clinical probability).\n"
+        "- Research and non-clinical software — not a certified medical device and not intended "
+        "for clinical diagnosis or treatment decisions."
     )

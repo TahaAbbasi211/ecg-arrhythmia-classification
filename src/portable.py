@@ -7,6 +7,8 @@ import math
 
 import numpy as np
 
+from src.features_v3 import FEATURE_NAMES, extract_recording_features_v3
+
 FS = 360
 
 # --- input hygiene -----------------------------------------------------------
@@ -360,32 +362,145 @@ def forest_predict_proba(forest, x):
     return np.array([s / n for s in total])
 
 
-def analyze_reference(sig, fs, cfg, forest):
+def _softmax(raw):
+    """Numerically stable softmax in pure Python float64."""
+    m = max(raw)
+    exps = [math.exp(v - m) for v in raw]
+    s = sum(exps)
+    return [v / s for v in exps]
+
+
+def export_hgb(model, weights, feature_names=None, decimals=6):
+    """Export a fitted HistGradientBoostingClassifier into compact float64 JSON."""
+    names = list(FEATURE_NAMES if feature_names is None else feature_names)
+    classes = [int(c) for c in model.classes_]
+    iters = []
+    for it_trees in model._predictors:
+        cls_trees = []
+        for pred in it_trees:
+            nd = pred.nodes
+            is_leaf = [int(v) for v in nd["is_leaf"]]
+            cls_trees.append({
+                "feature": [-1 if lf else int(f) for f, lf in zip(nd["feature_idx"], is_leaf)],
+                # Keep full float64 thresholds so boosting split boundaries never drift.
+                "threshold": [0.0 if lf else float(th) for th, lf in zip(nd["num_threshold"], is_leaf)],
+                "left": [-1 if lf else int(l) for l, lf in zip(nd["left"], is_leaf)],
+                "right": [-1 if lf else int(r) for r, lf in zip(nd["right"], is_leaf)],
+                "value": [round(float(val), decimals) if lf else 0.0
+                          for val, lf in zip(nd["value"], is_leaf)],
+            })
+        iters.append(cls_trees)
+    return {
+        "schema_version": 3,
+        "kind": "hgb",
+        "classes": classes,
+        "n_classes": 4,
+        "feature_count": len(names),
+        "feature_names": names,
+        "decision_weights": [float(w) for w in weights],
+        "baseline": [round(float(v), 8) for v in model._baseline_prediction[0]],
+        "iterations": iters,
+    }
+
+
+def hgb_predict_proba(model, x):
+    """Predict 4-class probabilities from an exported HGB JSON dict in pure float64."""
+    expected = int(model.get("feature_count", len(FEATURE_NAMES)))
+    xr = [float(v) for v in x]
+    if len(xr) != expected:
+        raise ValueError(f"expected {expected} features, got {len(xr)}")
+    for idx, val in enumerate(xr):
+        if not math.isfinite(val):
+            # missing_go_to_left is not exported; refuse NaN/Inf instead of silently branching right.
+            raise ValueError(
+                f"beat feature[{idx}] must be finite: NaN or Inf would silently "
+                "turn into a right-branch decision in every tree"
+            )
+
+    raw = [float(v) for v in model["baseline"]]
+    for it_trees in model["iterations"]:
+        for c, tree in enumerate(it_trees):
+            left = tree["left"]
+            right = tree["right"]
+            feat = tree["feature"]
+            thr = tree["threshold"]
+            i = 0
+            while left[i] != -1:
+                i = left[i] if xr[feat[i]] <= thr[i] else right[i]
+            raw[c] += float(tree["value"][i])
+
+    probs = _softmax(raw)
+    n_classes = int(model.get("n_classes", 4))
+    out = [0.0] * n_classes
+    for idx_c, cls_id in enumerate(model["classes"]):
+        out[int(cls_id)] = probs[idx_c]
+    return np.asarray(out, dtype=np.float64)
+
+
+def effective_scores(proba, weights):
+    """Normalize weighted scores: (proba * weights) / sum(proba * weights).
+
+    Falls back to unweighted probabilities when the weighted sum is <= 0.
+    """
+    p = np.asarray(proba, dtype=np.float64)
+    w = np.asarray(weights, dtype=np.float64)
+    wp = p * w
+    if p.ndim == 1:
+        denom = float(wp.sum())
+        return wp / denom if denom > 0.0 else p.copy()
+    denom = wp.sum(axis=-1, keepdims=True)
+    safe_denom = np.where(denom > 0.0, denom, 1.0)
+    return np.where(denom > 0.0, wp / safe_denom, p)
+
+
+def analyze_reference(sig, fs, cfg, model):
     """Everything the phone has to do, using only the simple functions of this file."""
     sos_main = np.asarray(cfg["sos_main"], dtype=float)
     sos_det = np.asarray(cfg["sos_det"], dtype=float)
+    target_fs = int(cfg.get("fs", FS))
+    pre = int(cfg.get("pre", PRE))
+    post = int(cfg.get("post", POST))
 
     sig = sanitize_signal(sig, fs)
-    sig = to_360hz(sig, fs)
+    sig = to_360hz(sig, fs, target=target_fs)
     sig_f = filtfilt(sos_main, sig)
-    peaks = detect_rpeaks(sig_f, sos_det)
+    peaks = detect_rpeaks(sig_f, sos_det, fs=target_fs)
 
     beats, rr, used = [], [], []
     for k in range(1, len(peaks) - 1):
         p = int(peaks[k])
-        if p - PRE < 0 or p + POST > len(sig_f):
+        if p - pre < 0 or p + post > len(sig_f):
             continue
-        beats.append(sig_f[p - PRE:p + POST])
+        beats.append(sig_f[p - pre:p + post])
         rr.append((int(peaks[k] - peaks[k - 1]), int(peaks[k + 1] - peaks[k])))
         used.append(p)
 
     if len(beats) == 0:
-        return {"signal": sig_f, "peaks": np.array([], dtype=int),
-                "pred": np.array([], dtype=int), "proba": np.zeros((0, 4))}
+        return {
+            "signal": sig_f,
+            "peaks": np.array([], dtype=int),
+            "pred": np.array([], dtype=int),
+            "proba": np.zeros((0, 4), dtype=np.float64),
+            "scores": np.zeros((0, 4), dtype=np.float64),
+        }
 
-    med = float(np.median([r[0] for r in rr]))
-    w = np.asarray(cfg["decision_weights"], dtype=float)
-    proba = np.array([forest_predict_proba(forest, beat_features(b, r[0], r[1], med))
-                      for b, r in zip(beats, rr)])
+    w = np.asarray(cfg.get("decision_weights", model.get("decision_weights")), dtype=np.float64)
+    if model.get("kind") == "hgb":
+        feats = extract_recording_features_v3(beats, rr, fs=target_fs)
+        proba = np.asarray([hgb_predict_proba(model, row) for row in feats], dtype=np.float64)
+    else:
+        med = float(np.median([r[0] for r in rr]))
+        proba = np.asarray(
+            [forest_predict_proba(model, beat_features(b, r[0], r[1], med))
+             for b, r in zip(beats, rr)],
+            dtype=np.float64,
+        )
+    scores = effective_scores(proba, w)
     pred = (proba * w).argmax(1)
-    return {"signal": sig_f, "peaks": np.array(used), "pred": pred, "proba": proba}
+    return {
+        "signal": sig_f,
+        "peaks": np.array(used, dtype=int),
+        "pred": pred,
+        "proba": proba,
+        "scores": scores,
+    }

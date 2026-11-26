@@ -1,10 +1,10 @@
-/// The full portable pipeline, ported 1:1 from `analyze_reference` in `src/portable.py`.
+/// The full portable v3.1 pipeline, ported 1:1 from `analyze_reference` in `src/portable.py`.
 library;
 
-import 'constants.dart';
-import 'features.dart';
+import 'constants.dart' as ecg_constants;
+import 'features_v3.dart';
 import 'filter.dart';
-import 'forest.dart';
+import 'hgb_model.dart';
 import 'resample.dart';
 import 'rpeaks.dart';
 import 'stats.dart';
@@ -15,14 +15,20 @@ class EcgConfig {
     required this.sosMain,
     required this.sosDet,
     required this.weights,
-    this.sampleRate = fs,
-    this.preSamples = pre,
-    this.postSamples = post,
+    this.schemaVersion = 3,
+    this.modelFile = 'ecg_model_v3.json',
+    this.featureCount = ecg_constants.featureCount,
+    this.sampleRate = ecg_constants.fs,
+    this.preSamples = ecg_constants.pre,
+    this.postSamples = ecg_constants.post,
   });
 
   final List<Biquad> sosMain;
   final List<Biquad> sosDet;
   final List<double> weights;
+  final int schemaVersion;
+  final String modelFile;
+  final int featureCount;
   final int sampleRate;
   final int preSamples;
   final int postSamples;
@@ -33,22 +39,26 @@ class EcgConfig {
       sosDet: parseSos(json['sos_det'] as List<dynamic>),
       weights: [
         for (final w in (json['decision_weights'] as List<dynamic>? ??
-            decisionWeights))
+            ecg_constants.decisionWeights))
           (w as num).toDouble(),
       ],
-      sampleRate: (json['fs'] as num?)?.toInt() ?? fs,
-      preSamples: (json['pre'] as num?)?.toInt() ?? pre,
-      postSamples: (json['post'] as num?)?.toInt() ?? post,
+      schemaVersion: (json['schema_version'] as num?)?.toInt() ?? 3,
+      modelFile: (json['model_file'] as String?) ?? 'ecg_model_v3.json',
+      featureCount:
+          (json['feature_count'] as num?)?.toInt() ?? ecg_constants.featureCount,
+      sampleRate: (json['fs'] as num?)?.toInt() ?? ecg_constants.fs,
+      preSamples: (json['pre'] as num?)?.toInt() ?? ecg_constants.pre,
+      postSamples: (json['post'] as num?)?.toInt() ?? ecg_constants.post,
     );
   }
 }
 
 /// Everything the phone has to do, in the same order as the Python reference.
 class EcgAnalyzer {
-  EcgAnalyzer({required this.config, required this.forest});
+  EcgAnalyzer({required this.config, required this.model});
 
   final EcgConfig config;
-  final Forest forest;
+  final HgbModel model;
 
   /// Run the whole pipeline on a raw signal sampled at [sourceFs].
   EcgResult analyze(List<double> raw, double sourceFs) {
@@ -64,8 +74,8 @@ class EcgAnalyzer {
     final peaks = detectRPeaks(sigF, config.sosDet, sampleRate: config.sampleRate);
 
     final beats = <List<double>>[];
+    final rr = <List<int>>[];
     final prevRr = <int>[];
-    final nextRr = <int>[];
     final used = <int>[];
 
     for (var k = 1; k < peaks.length - 1; k++) {
@@ -73,9 +83,11 @@ class EcgAnalyzer {
       if (p - config.preSamples < 0 || p + config.postSamples > sigF.length) {
         continue;
       }
+      final prev = peaks[k] - peaks[k - 1];
+      final next = peaks[k + 1] - peaks[k];
       beats.add(sigF.sublist(p - config.preSamples, p + config.postSamples));
-      prevRr.add(peaks[k] - peaks[k - 1]);
-      nextRr.add(peaks[k + 1] - peaks[k]);
+      rr.add([prev, next]);
+      prevRr.add(prev);
       used.add(p);
     }
 
@@ -86,21 +98,28 @@ class EcgAnalyzer {
         detectedPeaks: peaks,
         pred: const <int>[],
         proba: const <List<double>>[],
+        scores: const <List<double>>[],
         sampleRate: config.sampleRate,
         p1: percentile(sigF, 1),
         p99: percentile(sigF, 99),
       );
     }
 
-    // Recording-level median R-R over the beats that are actually analyzed.
     final medRr = median([for (final r in prevRr) r.toDouble()]);
+    final features = extractRecordingFeaturesV3(
+      beats,
+      rr,
+      sampleRate: config.sampleRate.toDouble(),
+    );
 
     final proba = <List<double>>[];
+    final scores = <List<double>>[];
     final pred = <int>[];
-    for (var i = 0; i < beats.length; i++) {
-      final features = beatFeatures(beats[i], prevRr[i], nextRr[i], medRr);
-      final p = forest.predictProba(features);
+    for (var i = 0; i < features.length; i++) {
+      final p = model.predictProba(features[i]);
+      final s = effectiveScores(p, config.weights);
       proba.add(p);
+      scores.add(s);
       // argmax of (proba * decision_weights), first index on ties.
       final weighted = <double>[
         for (var c = 0; c < p.length; c++) p[c] * config.weights[c],
@@ -114,6 +133,7 @@ class EcgAnalyzer {
       detectedPeaks: peaks,
       pred: pred,
       proba: proba,
+      scores: scores,
       sampleRate: config.sampleRate,
       referenceMedianRr: medRr,
       p1: percentile(sigF, 1),
@@ -130,6 +150,7 @@ class EcgResult {
     required this.detectedPeaks,
     required this.pred,
     required this.proba,
+    required this.scores,
     required this.sampleRate,
     this.referenceMedianRr,
     this.p1 = 0.0,
@@ -148,17 +169,18 @@ class EcgResult {
   /// Predicted class index per analyzed beat.
   final List<int> pred;
 
-  /// Class probabilities per analyzed beat.
+  /// Unweighted class probabilities per analyzed beat.
   final List<List<double>> proba;
+
+  /// Normalized decision-weighted model scores per analyzed beat.
+  final List<List<double>> scores;
 
   final int sampleRate;
 
-  /// The recording-level median R-R (in samples) the reference used for the
-  /// features. Null when no beat was analyzed.
+  /// The recording-level median R-R (in samples) over analyzed beats.
   final double? referenceMedianRr;
 
-  /// 1st and 99th percentile of the filtered signal. The plot scales its
-  /// vertical axis from these, so one spike cannot squash the whole trace.
+  /// 1st and 99th percentile of the filtered signal.
   final double p1;
   final double p99;
 

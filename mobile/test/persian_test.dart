@@ -72,12 +72,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('درباره برنامه'), findsOneWidget);
-    expect(find.text('V2.1.0'), findsOneWidget);
-    expect(find.textContaining('MIT-BIH'), findsOneWidget);
-    expect(find.text('0.965'), findsOneWidget);
-    expect(find.text('0.923'), findsOneWidget);
-    expect(find.text('0.177'), findsOneWidget);
-    expect(find.text('0.688'), findsOneWidget);
+    expect(find.text('V3.1.0'), findsOneWidget);
+    expect(find.textContaining('پایگاه داده آریتمی MIT-BIH'), findsOneWidget);
+    expect(find.text('0.972'), findsOneWidget);
+    expect(find.text('0.952'), findsOneWidget);
+    expect(find.text('0.179'), findsOneWidget);
+    expect(find.text('0.701'), findsOneWidget);
+    expect(find.textContaining('ریتم‌های دهلیزی مداوم'), findsOneWidget);
     expect(find.textContaining('نرم‌افزار پژوهشی و غیربالینی'), findsOneWidget);
   });
 

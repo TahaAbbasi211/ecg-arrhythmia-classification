@@ -58,16 +58,17 @@ class AboutScreen extends StatelessWidget {
               title: s.testResultsTitle,
               subtitle: s.testResultsSubtitle,
               children: [
-                _MetricRow(label: s.labelNF1, value: '0.965'),
-                _MetricRow(label: s.labelVF1, value: '0.923'),
-                _MetricRow(label: s.labelSF1, value: '0.177'),
-                _MetricRow(label: s.labelMacroF1, value: '0.688'),
+                _MetricRow(label: s.labelNF1, value: '0.972'),
+                _MetricRow(label: s.labelVF1, value: '0.952'),
+                _MetricRow(label: s.labelSF1, value: '0.179'),
+                _MetricRow(label: s.labelMacroF1, value: '0.701'),
               ],
             ),
             _Section(
               title: s.limitationsTitle,
               children: [
                 _Bullet(s.limitationS),
+                _Bullet(s.limitationSustainedAtrial),
                 _Bullet(s.limitationF),
                 _Bullet(s.limitationSingleLead),
               ],

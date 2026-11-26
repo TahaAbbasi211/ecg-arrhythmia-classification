@@ -22,6 +22,11 @@ AnalysisPayload _payload() {
       [0.1, 0.8, 0.1, 0.0],
       [0.05, 0.05, 0.9, 0.0],
     ],
+    scores: const [
+      [0.9, 0.05, 0.05, 0.0],
+      [0.1, 0.8, 0.1, 0.0],
+      [0.05, 0.05, 0.9, 0.0],
+    ],
     sampleRate: fs,
     medianRr: 360,
     heartRate: 60,
@@ -41,6 +46,9 @@ AnalysisPayload _latePayload() {
     proba: const [
       [0.05, 0.05, 0.9, 0.0],
     ],
+    scores: const [
+      [0.05, 0.05, 0.9, 0.0],
+    ],
     sampleRate: fs,
     medianRr: 360,
     heartRate: 60,
@@ -58,6 +66,9 @@ AnalysisPayload _edgePayload() {
     peaks: const [21593],
     pred: const [2],
     proba: const [
+      [0.05, 0.05, 0.9, 0.0],
+    ],
+    scores: const [
       [0.05, 0.05, 0.9, 0.0],
     ],
     sampleRate: fs,
@@ -116,12 +127,12 @@ void main() {
     expect(find.text('S · Supraventricular'), findsOneWidget);
     expect(find.text('V · Ventricular'), findsOneWidget);
 
-    // The S and V beats are listed with time and probability.
+    // The S and V beats are listed with time and normalized score.
     expect(find.text('S and V beats'), findsOneWidget);
     expect(find.text('0:01.5'), findsOneWidget);
     expect(find.text('0:02.5'), findsOneWidget);
-    expect(find.text('p = 0.80'), findsOneWidget);
-    expect(find.text('p = 0.90'), findsOneWidget);
+    expect(find.text('score = 0.80'), findsOneWidget);
+    expect(find.text('score = 0.90'), findsOneWidget);
 
     // Tapping a row moves the plot without throwing.
     await tester.tap(find.text('0:02.5'));
@@ -247,5 +258,32 @@ void main() {
     await tester.tap(find.text('0:50.0'));
     await tester.pumpAndSettle();
     expect(plot.scrollController.offset, greaterThan(1000));
+  });
+
+  testWidgets('result screen computes normalized weighted scores by default',
+      (tester) async {
+    _tall(tester);
+    const fs = 360;
+    final payload = AnalysisPayload(
+      signal: List<double>.generate(fs * 12, (i) => (i % 40) / 100.0),
+      peaks: const [540],
+      pred: const [1],
+      proba: const [
+        [0.1, 0.8, 0.1, 0.0],
+      ],
+      sampleRate: fs,
+      medianRr: 360,
+      heartRate: 60,
+      p1: 0.0,
+      p99: 0.4,
+    );
+
+    await tester.pumpWidget(_app(
+      ResultScreen(payload: payload, fileName: 'weighted.csv', sourceFs: 360),
+    ));
+    await tester.pumpAndSettle();
+
+    // [0.1*1, 0.8*0.25, 0.1*0.5, 0] = [0.1, 0.2, 0.05, 0] / 0.35 -> 0.5714
+    expect(find.text('score = 0.57'), findsOneWidget);
   });
 }

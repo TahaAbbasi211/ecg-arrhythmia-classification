@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../ecg/analyze.dart';
-import '../ecg/forest.dart';
+import '../ecg/hgb_model.dart';
 
 /// A built-in demo record.
 class SampleRecord {
@@ -44,25 +44,27 @@ const List<SampleRecord> sampleRecords = [
   ),
 ];
 
-/// Loads the config and forest once and keeps them in memory.
+/// Loads the config and v3.1 HGB model once and keeps them in memory.
 class ModelBundle {
-  ModelBundle({required this.config, required this.forest});
+  ModelBundle({required this.config, required this.model});
 
   final EcgConfig config;
-  final Forest forest;
+  final HgbModel model;
 
-  EcgAnalyzer get analyzer => EcgAnalyzer(config: config, forest: forest);
+  EcgAnalyzer get analyzer => EcgAnalyzer(config: config, model: model);
 
   static Future<ModelBundle> load() async {
     final configJson =
         jsonDecode(await rootBundle.loadString('assets/ecg_config.json'))
             as Map<String, dynamic>;
-    final forestJson =
-        jsonDecode(await rootBundle.loadString('assets/ecg_forest.json'))
+    final modelFile =
+        (configJson['model_file'] as String?) ?? 'ecg_model_v3.json';
+    final modelJson =
+        jsonDecode(await rootBundle.loadString('assets/$modelFile'))
             as Map<String, dynamic>;
     return ModelBundle(
       config: EcgConfig.fromJson(configJson),
-      forest: Forest.fromJson(forestJson),
+      model: HgbModel.fromJson(modelJson),
     );
   }
 }

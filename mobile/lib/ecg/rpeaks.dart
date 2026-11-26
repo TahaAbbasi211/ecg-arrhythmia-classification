@@ -11,7 +11,7 @@ import 'stats.dart';
 /// Returns sample indices, ascending.
 List<int> detectRPeaks(List<double> xf, List<Biquad> sosDet, {int sampleRate = fs}) {
   final n = xf.length;
-  if (n < 3) return <int>[];
+  if (n < 5) return <int>[];
 
   final det = filtFilt(sosDet, xf);
 

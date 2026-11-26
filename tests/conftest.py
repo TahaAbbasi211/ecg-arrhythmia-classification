@@ -23,6 +23,13 @@ def root():
 def bundle():
     from src.pipeline import load_model
 
+    return load_model()
+
+
+@pytest.fixture(scope="session")
+def legacy_bundle():
+    from src.pipeline import load_model
+
     return load_model(os.path.join(ROOT, "models", "ecg_rf_small.joblib"))
 
 

@@ -300,16 +300,17 @@ void main() {
     await tester.pumpWidget(_wrap(const AboutScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('V2.1.0'), findsOneWidget);
+    expect(find.text('V3.1.0'), findsOneWidget);
     expect(find.textContaining('MIT-BIH Arrhythmia Database'), findsOneWidget);
     expect(find.textContaining('22 patients for training'), findsOneWidget);
     expect(find.textContaining('22 different patients for testing'),
         findsOneWidget);
-    expect(find.text('0.965'), findsOneWidget);
-    expect(find.text('0.923'), findsOneWidget);
-    expect(find.text('0.177'), findsOneWidget);
-    expect(find.text('0.688'), findsOneWidget);
+    expect(find.text('0.972'), findsOneWidget);
+    expect(find.text('0.952'), findsOneWidget);
+    expect(find.text('0.179'), findsOneWidget);
+    expect(find.text('0.701'), findsOneWidget);
     expect(find.textContaining('S beats are weak'), findsOneWidget);
+    expect(find.textContaining('sustained ectopic atrial'), findsOneWidget);
     expect(find.textContaining('Fusion (F) beats are not predicted'),
         findsOneWidget);
     expect(find.textContaining('Single lead only'), findsOneWidget);

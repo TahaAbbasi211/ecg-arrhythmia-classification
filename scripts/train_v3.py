@@ -1326,7 +1326,7 @@ def main():
 
         t1 = time.perf_counter()
         _ = [json_predict_proba(payload, row) for row in probe]
-        loop_ms_1k = (time.perf_counter() - t1) * (1000.0 / len(probe))
+        loop_ms_1k = (time.perf_counter() - t1) * (1_000_000.0 / len(probe))
 
         entry = {
             "name": name,
@@ -1374,7 +1374,7 @@ def main():
         max_parity_diff3 = float(np.max(np.abs(sk_p3 - loop_p3)))
         t1 = time.perf_counter()
         _ = [json_predict_proba(payload3, row) for row in parity_probe]
-        loop_ms3 = (time.perf_counter() - t1) * (1000.0 / len(parity_probe))
+        loop_ms3 = (time.perf_counter() - t1) * (1_000_000.0 / len(parity_probe))
 
         entry3 = {
             "name": spec3["name"],
