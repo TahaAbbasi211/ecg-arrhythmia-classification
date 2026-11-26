@@ -70,14 +70,19 @@ List<String> _split(String line, String separator) {
   return <String>[for (final field in line.split(separator)) field.trim()];
 }
 
-/// True for a header that says 'time', or a strictly increasing, even column.
-bool _looksLikeTime(String name, List<double?> column) {
+/// True when the column header names a time or sample-index axis.
+bool _hasTimeHeader(String name) {
   final lowered = name.trim().toLowerCase();
   // A single "t" must match exactly: "voltage" or "rate" contain it.
   if (lowered == 't') return true;
   for (final hint in _timeHints) {
     if (lowered.contains(hint)) return true;
   }
+  return false;
+}
+
+/// True for a strictly increasing, evenly spaced numeric sequence.
+bool _looksLikeTimeValues(List<double?> column) {
   if (column.length < 2) return false;
   final values = <double>[];
   for (final value in column) {
@@ -157,19 +162,40 @@ ParsedSignal parseSignalText(String text) {
     return ParsedSignal(values: const <double>[], skippedLines: skipped);
   }
 
-  int? timeColumn;
-  for (final c in usable) {
-    final name = names.isNotEmpty && c < names.length ? names[c] : '';
-    if (_looksLikeTime(name, columns[c])) {
-      timeColumn = c;
-      break;
-    }
+  String? nameOf(int? c) {
+    if (c == null || names.isEmpty || c >= names.length) return null;
+    final name = names[c].trim();
+    return name.isEmpty ? null : name;
   }
-  final candidates = <int>[
+
+  final timeColumns = <int>{
     for (final c in usable)
-      if (c != timeColumn) c,
+      if (_hasTimeHeader(nameOf(c) ?? '')) c,
+  };
+  final remaining = <int>[
+    for (final c in usable)
+      if (!timeColumns.contains(c)) c,
   ];
-  if (candidates.isEmpty) {
+  if (remaining.isEmpty) {
+    return ParsedSignal(values: const <double>[], skippedLines: skipped);
+  }
+
+  final monotonic = <int>{
+    for (final c in remaining)
+      if (_looksLikeTimeValues(columns[c])) c,
+  };
+  final nonMonotonic = <int>[
+    for (final c in remaining)
+      if (!monotonic.contains(c)) c,
+  ];
+
+  final List<int> candidates;
+  if (nonMonotonic.isNotEmpty) {
+    timeColumns.addAll(monotonic);
+    candidates = nonMonotonic;
+  } else if (timeColumns.isNotEmpty) {
+    candidates = remaining;
+  } else {
     return ParsedSignal(values: const <double>[], skippedLines: skipped);
   }
 
@@ -180,17 +206,16 @@ ParsedSignal parseSignalText(String text) {
     for (final value in columns[chosen]) value ?? double.nan,
   ];
 
-  String? nameOf(int? c) {
-    if (c == null || names.isEmpty || c >= names.length) return null;
-    final name = names[c].trim();
-    return name.isEmpty ? null : name;
-  }
+  final ignoredNames = <String>[
+    for (final c in usable)
+      if (timeColumns.contains(c) && nameOf(c) != null) nameOf(c)!,
+  ];
 
   return ParsedSignal(
     values: values,
     skippedLines: skipped,
     columnName: nameOf(chosen),
-    timeColumn: nameOf(timeColumn),
+    timeColumn: ignoredNames.isEmpty ? null : ignoredNames.join(', '),
   );
 }
 

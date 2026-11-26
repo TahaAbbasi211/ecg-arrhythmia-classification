@@ -150,3 +150,12 @@ def test_heart_rate_format_never_prints_nan():
     bpm = heart_rate_bpm(np.array([10, 300, 590]), 360)
     text = "—" if bpm is None else "%.0f" % bpm
     assert "nan" not in text.lower()
+
+
+def test_three_column_sample_time_ecg_drops_both_non_signal_columns():
+    csv = "sample,time_s,MLII_mV\n0,0.000,0.12\n1,0.003,0.45\n2,0.006,-0.20\n"
+    frame = read_signal_frame(csv)
+    candidates, time_column = describe_columns(frame)
+    assert candidates == ["MLII_mV"]
+    assert frame[candidates[0]].tolist() == [0.12, 0.45, -0.20]
+    assert time_column == "sample, time_s"

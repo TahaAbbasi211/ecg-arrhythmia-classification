@@ -111,8 +111,8 @@ class AppStrings {
   String get analyzing => isFa ? 'در حال تحلیل…' : 'Analyzing…';
 
   String get disclaimer => isFa
-      ? 'پروژه آموزشی و پژوهشی، فاقد کاربرد تشخیصی پزشکی.'
-      : 'Educational project, not a medical device.';
+      ? 'نرم‌افزار پژوهشی و غیربالینی — دستگاه پزشکی دارای تأییدیه نیست و برای تشخیص بالینی یا تصمیم‌گیری درمانی طراحی نشده است.'
+      : 'Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.';
 
   String get aboutTooltip => isFa ? 'درباره' : 'About';
   String get aboutTitle => isFa ? 'درباره برنامه' : 'About';
@@ -123,8 +123,8 @@ class AppStrings {
 
   String get dataSectionTitle => isFa ? 'داده‌ها' : 'Data';
   String get dataDesc1 => isFa
-      ? 'پایگاه داده آریتمی MIT-BIH (PhysioNet): شامل ۴۸ رکورد نیم‌ساعته دو لید با فرکانس ۳۶۰ هرتز همراه با برچسب‌گذاری دقیق متخصصان. فقط از لید اول (MLII) استفاده شده است.'
-      : 'MIT-BIH Arrhythmia Database (PhysioNet): 48 half-hour two-lead recordings at 360 Hz with expert beat annotations. Only the first lead (MLII) is used.';
+      ? 'پایگاه داده آریتمی MIT-BIH (PhysioNet): شامل ۴۸ رکورد نیم‌ساعته دو لید با فرکانس ۳۶۰ هرتز همراه با برچسب‌گذاری دقیق متخصصان. فقط از لید MLII استفاده شده است.'
+      : 'MIT-BIH Arrhythmia Database (PhysioNet): 48 half-hour two-lead recordings at 360 Hz with expert beat annotations. Only lead MLII is used.';
 
   String get dataDesc2 => isFa
       ? 'تفکیک بین‌بیماری (Inter-patient): ۲۲ بیمار برای آموزش و ۲۲ بیمار مجزا برای آزمون، به طوری که داده‌های هیچ بیماری در هر دو مجموعه مشترک نیست.'
@@ -226,5 +226,5 @@ class AppStrings {
   }
 
   String get languageToggle => isFa ? 'English' : 'فارسی';
-  String get languageTooltip => isFa ? 'تغییر زبان به انگلیسی' : 'تغییر زبان به فارسی';
+  String get languageTooltip => isFa ? 'تغییر زبان به انگلیسی' : 'Switch to Persian';
 }

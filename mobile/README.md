@@ -3,6 +3,8 @@
 Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (normal),
 **S** (supraventricular premature) or **V** (ventricular premature).
 
+> **Disclaimer:** Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.
+
 **Features:**
 - **Full Persian (Farsi) & English localization:** Native Right-to-Left (RTL) support, full medical and technical Persian terminology, and an instant in-app language switcher (`FA` / `EN`).
 - Automatic locale detection (starts in Persian if device language is Persian).
@@ -72,10 +74,9 @@ The APKs land in `build/app/outputs/flutter-apk/`:
 | `app-arm64-v8a-release.apk` | 17.3 MB |
 | `app-x86_64-release.apk` | 18.8 MB |
 
-Signing: release builds use the debug key unless `android/key.properties` exists
-(see `android/SIGNING.md`). v2.0.0 and v2.1.0 are signed with the Android debug
-keystore, so **back that keystore up** - Android only installs an update signed with
-the same key.
+Signing: release builds require `android/key.properties` pointing to a dedicated release
+keystore (`release.jks`). Without it, Gradle fails closed unless `-PallowDebugRelease=true`
+is explicitly passed for a local debug-signed release build (see `android/SIGNING.md`).
 
 Install one on a connected device:
 
@@ -111,7 +112,7 @@ deliberately **not** bundled into the app.
 resampler must reproduce the Python output within 1e-8 at 180, 250 and 500 Hz, so
 the anti-aliasing filter and the interpolation cannot drift apart.
 
-Four more suites cover the app itself, so `flutter test` runs 51 tests in total:
+Four more suites cover the app itself:
 
 - `test/ui_test.dart` — the CSV parser (header, comments, `(time, ecg)` files,
   Persian/Arabic digits in the rate field) and the home/about screens, including the

@@ -26,7 +26,6 @@ class EcgTracePainter extends CustomPainter {
     required this.windowSeconds,
     required this.gridColor,
     required this.traceColor,
-    required this.markerLabelColor,
   }) : super(repaint: scrollController);
 
   final AnalysisPayload payload;
@@ -38,7 +37,6 @@ class EcgTracePainter extends CustomPainter {
   final double windowSeconds;
   final Color gridColor;
   final Color traceColor;
-  final Color markerLabelColor;
 
   /// Total width of the scrollable content for a [viewportWidth] wide plot.
   ///
@@ -293,7 +291,6 @@ class _EcgPlotState extends State<EcgPlot> {
                       windowSeconds: widget.windowSeconds,
                       gridColor: scheme.outlineVariant.withValues(alpha: 0.5),
                       traceColor: scheme.onSurface.withValues(alpha: 0.85),
-                      markerLabelColor: scheme.onSurface,
                     ),
                   ),
                 ),

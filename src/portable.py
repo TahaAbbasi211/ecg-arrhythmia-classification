@@ -62,6 +62,8 @@ def sosfilt(sos, x):
 def filtfilt(sos, x, padlen=720):
     """Zero-phase filtering: odd-extend both ends, filter forward then backward, trim."""
     x = np.asarray(x, dtype=float)
+    if x.size == 0:
+        return np.array([], dtype=float)
     n = min(padlen, len(x) - 1)
     left = 2 * x[0] - x[n:0:-1]
     right = 2 * x[-1] - x[-2:-(n + 2):-1]
@@ -160,13 +162,16 @@ def to_360hz(x, fs, target=TARGET_FS, aa_cutoff=AA_CUTOFF, aa_order=AA_ORDER):
     if abs(fs - target) < FS_EPS:
         return x
     if fs > target:
-        x = sosfilt(butterworth_lowpass_sos(fs, aa_cutoff, aa_order), x)
+        x = filtfilt(butterworth_lowpass_sos(fs, aa_cutoff, aa_order), x)
     return resample_linear(x, fs, target)
 
 
 def detect_rpeaks(xf, sos_det, fs=FS):
     """Pan-Tompkins style R-peak detector. xf = signal already band-passed 0.5-40 Hz."""
+    xf = np.asarray(xf, dtype=float)
     n = len(xf)
+    if n < 5:
+        return np.array([], dtype=int)
     det = filtfilt(sos_det, xf)
 
     # 5-point derivative, squaring, centered moving-window integration (about 150 ms)

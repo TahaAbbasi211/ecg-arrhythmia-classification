@@ -1,5 +1,6 @@
 import java.io.FileInputStream
 import java.util.Properties
+import org.gradle.api.GradleException
 
 plugins {
     id("com.android.application")
@@ -15,6 +16,7 @@ if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
 }
 val hasReleaseKey = keystorePropertiesFile.exists()
+val allowDebugRelease = project.findProperty("allowDebugRelease")?.toString()?.toBoolean() == true
 
 android {
     namespace = "com.tahaabbasi.ecgarrhythmia"
@@ -56,14 +58,26 @@ android {
 
     buildTypes {
         release {
-            // Without key.properties the debug key is used, exactly like v2.0.0.
-            // That keeps `flutter run --release` working on a fresh clone.
-            signingConfig = if (hasReleaseKey) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            signingConfig = when {
+                hasReleaseKey -> signingConfigs.getByName("release")
+                allowDebugRelease -> signingConfigs.getByName("debug")
+                else -> null
             }
         }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val releaseTaskRequested = allTasks.any { task ->
+        task.project == project &&
+            task.name.contains("release", ignoreCase = true) &&
+            !task.name.contains("test", ignoreCase = true)
+    }
+    if (releaseTaskRequested && !hasReleaseKey && !allowDebugRelease) {
+        throw GradleException(
+            "Release build requires mobile/android/key.properties (see mobile/android/SIGNING.md). " +
+                "To intentionally build a debug-signed release APK locally, pass -PallowDebugRelease=true."
+        )
     }
 }
 

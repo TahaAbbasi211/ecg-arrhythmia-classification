@@ -194,7 +194,7 @@ List<double> to360Hz(
   if ((rate - target).abs() < fsEpsilon) return List<double>.from(x);
   var source = x;
   if (rate > target) {
-    source = sosFilt(
+    source = filtFilt(
       butterworthLowpassSos(rate, cutoff: cutoff, order: order),
       x,
     );

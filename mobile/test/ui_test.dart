@@ -99,6 +99,14 @@ void main() {
     expect(parsed.values, [0.0, 1.0, 7.0]);
   });
 
+  test('parser drops both sample and time columns in a three-column CSV', () {
+    const csv =
+        'sample,time_s,MLII_mV\n0,0.000,0.12\n1,0.003,0.45\n2,0.006,-0.20\n';
+    final parsed = parseSignalText(csv);
+    expect(parsed.columnName, 'MLII_mV');
+    expect(parsed.values, [0.12, 0.45, -0.20]);
+  });
+
   test('Persian and Arabic digits parse as a sampling rate', () {
     expect(parseSamplingRate('۳۶۰'), 360);
     expect(parseSamplingRate('٣٦٠'), 360);
@@ -305,7 +313,12 @@ void main() {
     expect(find.textContaining('Fusion (F) beats are not predicted'),
         findsOneWidget);
     expect(find.textContaining('Single lead only'), findsOneWidget);
-    expect(find.text('Educational project, not a medical device.'),
-        findsOneWidget);
+    expect(
+      find.text(
+        'Research and non-clinical software — not a certified medical device '
+        'and not intended for clinical diagnosis or treatment decisions.',
+      ),
+      findsOneWidget,
+    );
   });
 }
