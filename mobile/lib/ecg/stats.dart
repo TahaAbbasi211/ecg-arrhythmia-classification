@@ -10,6 +10,18 @@ double median(List<double> values) {
   return (s[n ~/ 2 - 1] + s[n ~/ 2]) / 2.0;
 }
 
+/// numpy.percentile(values, p) with the default linear interpolation.
+double percentile(List<double> values, double p) {
+  if (values.isEmpty) return double.nan;
+  final s = List<double>.from(values)..sort();
+  if (s.length == 1) return s[0];
+  final rank = (s.length - 1) * p / 100.0;
+  final lo = rank.floor();
+  final hi = rank.ceil();
+  if (lo == hi) return s[lo];
+  return s[lo] + (s[hi] - s[lo]) * (rank - lo);
+}
+
 /// numpy.argmax: returns the FIRST index on ties.
 int argMax(List<double> values) {
   var best = 0;

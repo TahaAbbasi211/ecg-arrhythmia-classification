@@ -6,51 +6,156 @@ import '../data/analysis_worker.dart';
 import '../l10n/strings.dart';
 import 'theme.dart';
 
-/// Draws the filtered ECG trace with colored beat markers.
+/// Lowest and highest sample that fall into one pixel column.
+class ColumnEnvelope {
+  ColumnEnvelope(this.min, this.max);
+
+  double min;
+  double max;
+}
+
+/// Draws the visible part of the filtered ECG, one column at a time.
+///
+/// The painter never sees the scrollable content: it paints the viewport only
+/// and reads the scroll offset from [scrollController], which also triggers
+/// repaints. That keeps a 30 minute recording as cheap to scroll as a 10 s one.
 class EcgTracePainter extends CustomPainter {
   EcgTracePainter({
     required this.payload,
+    required this.scrollController,
     required this.windowSeconds,
     required this.gridColor,
     required this.traceColor,
     required this.markerLabelColor,
-  });
+  }) : super(repaint: scrollController);
 
   final AnalysisPayload payload;
 
-  /// Visible window width in seconds; the painter receives the matching width.
+  /// Drives both the offset and the repaint.
+  final ScrollController scrollController;
+
+  /// Visible window width in seconds.
   final double windowSeconds;
   final Color gridColor;
   final Color traceColor;
   final Color markerLabelColor;
 
+  /// Total width of the scrollable content for a [viewportWidth] wide plot.
+  ///
+  /// This, not the viewport, sets pixels per sample: 60 s at 360 Hz on a 400 px
+  /// viewport with an 8 s window is 3000 px of content, so 0.139 px per sample.
+  double contentWidth(double viewportWidth) {
+    final fs = payload.sampleRate.toDouble();
+    if (fs <= 0 || payload.signal.isEmpty) return viewportWidth;
+    final totalSeconds = payload.signal.length / fs;
+    return math.max(viewportWidth, totalSeconds * viewportWidth / windowSeconds);
+  }
+
+  double pxPerSampleFor(double viewportWidth) {
+    if (payload.signal.isEmpty) return 0;
+    return contentWidth(viewportWidth) / payload.signal.length;
+  }
+
+  double xForSample(int sample, double viewportWidth) =>
+      sample * pxPerSampleFor(viewportWidth);
+
+  /// Collapse [signal] into one min/max pair per pixel column.
+  ///
+  /// Min-Max decimation keeps the extreme sample of every column, so a spike
+  /// that is 7 samples wide still shows when 7 samples share one pixel.
+  static List<ColumnEnvelope?> envelope(
+    List<double> signal, {
+    required double pxPerSample,
+    required double offset,
+    required int columns,
+  }) {
+    final out = List<ColumnEnvelope?>.filled(columns, null);
+    if (pxPerSample <= 0 || columns <= 0 || signal.isEmpty) return out;
+
+    // Sample i lands in column floor(i * pxPerSample - offset), so column
+    // `columns - 1` ends at sample (offset + columns) / pxPerSample.
+    final first = math.max(0, (offset / pxPerSample).floor());
+    final last = math.min(
+      signal.length,
+      ((offset + columns) / pxPerSample).ceil() + 1,
+    );
+    for (var i = first; i < last; i++) {
+      final column = (i * pxPerSample - offset).floor();
+      if (column < 0 || column >= columns) continue;
+      final value = signal[i];
+      final current = out[column];
+      if (current == null) {
+        out[column] = ColumnEnvelope(value, value);
+      } else {
+        if (value < current.min) current.min = value;
+        if (value > current.max) current.max = value;
+      }
+    }
+    return out;
+  }
+
+  double? _fallbackLo;
+  double? _fallbackHi;
+
+  void _ensureFallbackRange() {
+    if (_fallbackLo != null) return;
+    var lo = payload.signal.isEmpty ? 0.0 : payload.signal[0];
+    var hi = lo;
+    for (final value in payload.signal) {
+      if (value < lo) lo = value;
+      if (value > hi) hi = value;
+    }
+    _fallbackLo = lo;
+    _fallbackHi = hi;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final signal = payload.signal;
-    if (signal.isEmpty || size.width <= 0) return;
+    if (signal.isEmpty || size.width <= 0 || size.height <= 0) return;
 
     final fs = payload.sampleRate.toDouble();
-    final pxPerSample = size.width / (windowSeconds * fs);
+    final pxPerSample = pxPerSampleFor(size.width);
+    if (pxPerSample <= 0) return;
+    final pxPerSecond = pxPerSample * fs;
 
-    // Vertical scaling from the signal's own range, with a little headroom.
-    var lo = signal[0];
-    var hi = signal[0];
-    for (final v in signal) {
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
+    final content = contentWidth(size.width);
+    final maxOffset = math.max(0.0, content - size.width);
+    final offset = scrollController.hasClients
+        ? scrollController.offset.clamp(0.0, maxOffset)
+        : 0.0;
+
+    // Vertical scale from the 1st/99th percentile of the filtered signal, so a
+    // single spike cannot squash the whole trace.
+    var lo = payload.p1;
+    var hi = payload.p99;
+    if (!(hi > lo)) {
+      _ensureFallbackRange();
+      lo = _fallbackLo!;
+      hi = _fallbackHi!;
     }
     final span = math.max(hi - lo, 1e-6);
     final top = 8.0;
     final plotHeight = math.max(size.height - 16.0, 1.0);
-    double yFor(double v) => top + (hi - v) / span * plotHeight;
+    double yFor(double value) {
+      final y = top + (hi - value) / span * plotHeight;
+      return y.clamp(2.0, size.height - 2.0);
+    }
 
-    // Grid: one vertical line per second, one horizontal midline.
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+
+    // Grid: one vertical line per second, plus a midline.
     final gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1.0;
-    final seconds = (size.width / (pxPerSample * fs));
-    for (var s = 0.0; s <= seconds; s += 1.0) {
-      final x = s * fs * pxPerSample;
+    final firstSecond = (offset / pxPerSecond).floor();
+    final lastSecond = ((offset + size.width) / pxPerSecond).ceil();
+    for (var second = math.max(0, firstSecond);
+        second <= lastSecond;
+        second++) {
+      final x = second * pxPerSecond - offset;
+      if (x < -1 || x > size.width + 1) continue;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
     }
     canvas.drawLine(
@@ -59,41 +164,75 @@ class EcgTracePainter extends CustomPainter {
       gridPaint,
     );
 
-    // Trace: one polyline over the whole signal, clipped to the visible width.
     final tracePaint = Paint()
       ..color = traceColor
       ..strokeWidth = 1.4
       ..style = PaintingStyle.stroke
       ..strokeJoin = StrokeJoin.round;
-    final path = Path();
-    final step = pxPerSample < 0.5 ? 1 : math.max(1, (0.5 / pxPerSample).floor());
-    var started = false;
-    for (var i = 0; i < signal.length; i += step) {
-      final x = i * pxPerSample;
-      final y = yFor(signal[i]);
-      if (!started) {
-        path.moveTo(x, y);
-        started = true;
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    canvas.drawPath(path, tracePaint);
 
-    // Beat markers.
+    if (pxPerSample >= 1.0) {
+      // Zoomed in: one point per sample is both cheaper and more accurate.
+      final first = math.max(0, (offset / pxPerSample).floor());
+      final last = math.min(
+        signal.length,
+        ((offset + size.width) / pxPerSample).ceil() + 1,
+      );
+      final path = Path();
+      var started = false;
+      for (var i = first; i < last; i++) {
+        final x = i * pxPerSample - offset;
+        final y = yFor(signal[i]);
+        if (!started) {
+          path.moveTo(x, y);
+          started = true;
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, tracePaint);
+    } else {
+      // Min-Max envelope: every pixel column draws the true extremes of the
+      // samples behind it, so no beat can disappear between two pixels.
+      final columns = size.width.ceil();
+      final envelope = EcgTracePainter.envelope(
+        signal,
+        pxPerSample: pxPerSample,
+        offset: offset,
+        columns: columns,
+      );
+      final path = Path();
+      var started = false;
+      for (var column = 0; column < columns; column++) {
+        final band = envelope[column];
+        if (band == null) continue;
+        final x = column + 0.5;
+        if (!started) {
+          path.moveTo(x, yFor(band.max));
+          started = true;
+        }
+        path.lineTo(x, yFor(band.max));
+        path.lineTo(x, yFor(band.min));
+      }
+      canvas.drawPath(path, tracePaint);
+    }
+
+    // Beat markers, only for the visible range.
     final markerPaint = Paint()..strokeWidth = 1.6;
     final dotPaint = Paint()..style = PaintingStyle.fill;
     for (var b = 0; b < payload.peaks.length; b++) {
-      final p = payload.peaks[b];
-      if (p < 0 || p >= signal.length) continue;
-      final x = p * pxPerSample;
-      final y = yFor(signal[p]);
+      final peak = payload.peaks[b];
+      if (peak < 0 || peak >= signal.length) continue;
+      final x = peak * pxPerSample - offset;
+      if (x < -4 || x > size.width + 4) continue;
       final color = colorForClass(payload.pred[b]);
+      final y = yFor(signal[peak]);
       markerPaint.color = color.withValues(alpha: 0.55);
       dotPaint.color = color;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), markerPaint);
       canvas.drawCircle(Offset(x, y), 3.0, dotPaint);
     }
+
+    canvas.restore();
   }
 
   @override
@@ -106,6 +245,9 @@ class EcgTracePainter extends CustomPainter {
 }
 
 /// Horizontally scrollable ECG plot with a fixed visible window.
+///
+/// The painter sits behind a transparent scroll view: the scroll view owns the
+/// gesture and the content width, the painter only redraws the visible window.
 class EcgPlot extends StatefulWidget {
   const EcgPlot({
     super.key,
@@ -127,29 +269,44 @@ class _EcgPlotState extends State<EcgPlot> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final fs = widget.payload.sampleRate.toDouble();
-    final totalSeconds = widget.payload.signal.length / fs;
+    final totalSeconds = fs > 0 ? widget.payload.signal.length / fs : 0.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final viewport = constraints.maxWidth;
+        final viewport = math.max(constraints.maxWidth, 1.0);
+        final height = math.max(constraints.maxHeight, 1.0);
         final pxPerSecond = viewport / widget.windowSeconds;
         final totalWidth = math.max(viewport, totalSeconds * pxPerSecond);
 
-        return SingleChildScrollView(
-          controller: widget.scrollController,
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: totalWidth,
-            height: constraints.maxHeight,
-            child: CustomPaint(
-              painter: EcgTracePainter(
-                payload: widget.payload,
-                windowSeconds: widget.windowSeconds,
-                gridColor: scheme.outlineVariant.withValues(alpha: 0.5),
-                traceColor: scheme.onSurface.withValues(alpha: 0.85),
-                markerLabelColor: scheme.onSurface,
+        return Directionality(
+          // A Persian locale flips the scroll axis and would scroll the wrong
+          // way at offset 0; the plot is always left to right in time.
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: EcgTracePainter(
+                      payload: widget.payload,
+                      scrollController: widget.scrollController,
+                      windowSeconds: widget.windowSeconds,
+                      gridColor: scheme.outlineVariant.withValues(alpha: 0.5),
+                      traceColor: scheme.onSurface.withValues(alpha: 0.85),
+                      markerLabelColor: scheme.onSurface,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  controller: widget.scrollController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const ClampingScrollPhysics(),
+                  child: SizedBox(width: totalWidth, height: height),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -182,7 +339,13 @@ class EcgLegend extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text('${classLabels[i]} · ${s.classLabelLong(i)}', style: textStyle),
+              // At 320 px a Persian label is wider than the screen.
+              Flexible(
+                child: Text(
+                  '${classLabels[i]} · ${s.classLabelLong(i)}',
+                  style: textStyle,
+                ),
+              ),
             ],
           ),
       ],

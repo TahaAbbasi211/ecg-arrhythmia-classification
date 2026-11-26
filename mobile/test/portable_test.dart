@@ -6,6 +6,7 @@ import 'package:ecg_beat_classifier/ecg/analyze.dart';
 import 'package:ecg_beat_classifier/ecg/features.dart';
 import 'package:ecg_beat_classifier/ecg/filter.dart';
 import 'package:ecg_beat_classifier/ecg/forest.dart';
+import 'package:ecg_beat_classifier/ecg/resample.dart';
 import 'package:ecg_beat_classifier/ecg/rpeaks.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +33,63 @@ void main() {
   test('forest loads 50 trees with 4 classes', () {
     expect(forest.trees.length, 50);
     expect(forest.nClasses, 4);
+  });
+
+  group('resampling parity with src/portable.py', () {
+    // export/resample_parity.json is written by scripts/export_resample_parity.py
+    // and asserted again by the pytest suite, so both languages meet the same
+    // numbers instead of each other's bugs.
+    final parity = _loadJson('../export/resample_parity.json');
+
+    for (final entry in parity['cases'] as List<dynamic>) {
+      final c = entry as Map<String, dynamic>;
+      final rate = (c['fs'] as num).toDouble();
+
+      test('${c['fs']} Hz downsamples like the reference', () {
+        final raw = _doubles(c['raw']);
+        final expected = _doubles(c['expected']);
+        final got = to360Hz(raw, rate);
+        expect(got.length, expected.length);
+        var maxDiff = 0.0;
+        var worstAt = -1;
+        for (var i = 0; i < got.length; i++) {
+          final d = (got[i] - expected[i]).abs();
+          if (d > maxDiff) {
+            maxDiff = d;
+            worstAt = i;
+          }
+        }
+        expect(maxDiff, lessThanOrEqualTo(1e-8),
+            reason: 'max |diff| = $maxDiff at sample $worstAt '
+                '(dart ${got[worstAt]}, python ${expected[worstAt]})');
+      });
+    }
+  });
+
+  group('input hygiene', () {
+    test('a bad sampling rate is rejected', () {
+      expect(() => to360Hz(const [1.0, 2.0, 3.0], 0), throwsA(isA<SignalException>()));
+      expect(() => to360Hz(const [1.0, 2.0, 3.0], double.nan),
+          throwsA(isA<SignalException>()));
+    });
+
+    test('scattered NaN and Inf are interpolated', () {
+      final x = [for (var i = 0; i < 1000; i++) i.toDouble()];
+      x[10] = double.nan;
+      x[500] = double.infinity;
+      final out = sanitizeSignal(x, 360);
+      expect(out.every((v) => v.isFinite), isTrue);
+      expect(out[10], closeTo(10.0, 1e-9));
+      expect(out[500], closeTo(500.0, 1e-9));
+    });
+
+    test('a long corrupt gap is rejected', () {
+      final x = List<double>.filled(36000, 0.0);
+      for (var i = 1000; i < 1300; i++) {
+        x[i] = double.nan;
+      }
+      expect(() => sanitizeSignal(x, 360), throwsA(isA<SignalException>()));
+    });
   });
 
   final cases = (vectors['cases'] as Map<String, dynamic>);

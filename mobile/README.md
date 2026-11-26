@@ -1,12 +1,25 @@
-# ECG Beat Classifier (Android) - V2
+# ECG Beat Classifier (Android) - V2.1
 
 Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (normal),
 **S** (supraventricular premature) or **V** (ventricular premature).
 
-**Version 2.0 (V2) Features:**
+**Features:**
 - **Full Persian (Farsi) & English localization:** Native Right-to-Left (RTL) support, full medical and technical Persian terminology, and an instant in-app language switcher (`FA` / `EN`).
 - Automatic locale detection (starts in Persian if device language is Persian).
 - Pure on-device offline inference (no internet permission required).
+
+**New in 2.1 (no model change - the 50-tree forest and its 57 features are identical):**
+- The 60 s trace is drawn on a viewport-sized canvas over a scrolling spacer with
+  Min-Max decimation. Before, the whole recording was squeezed into the screen width
+  and the Persian layout scrolled it in the wrong direction.
+- CSV input accepts `(time, ecg)` files, `#`/`//` comments and `;`/tab separators, and
+  reports broken or oversized (> 20 MB) files instead of crashing.
+- Unit selector (mV / V / uV) and a manual polarity switch, plus a warning when the
+  filtered amplitude suggests the wrong unit (nothing is converted automatically).
+- Inputs above 360 Hz are anti-aliased before resampling, in step with the Python
+  reference at 180, 250 and 500 Hz.
+- JSON/forest parsing and CSV parsing run off the UI thread, and the beat list is
+  sorted by time.
 
 Everything runs on the device: filtering, R-peak detection, the 57 beat features and a
 50-tree Random Forest are pure Dart. There is no network code, no analytics and no ML
@@ -55,9 +68,14 @@ The APKs land in `build/app/outputs/flutter-apk/`:
 
 | APK | Size |
 |---|---|
-| `app-armeabi-v7a-release.apk` | 14.15 MB |
-| `app-arm64-v8a-release.apk` | 16.63 MB |
-| `app-x86_64-release.apk` | 18.06 MB |
+| `app-armeabi-v7a-release.apk` | 14.9 MB |
+| `app-arm64-v8a-release.apk` | 17.3 MB |
+| `app-x86_64-release.apk` | 18.8 MB |
+
+Signing: release builds use the debug key unless `android/key.properties` exists
+(see `android/SIGNING.md`). v2.0.0 and v2.1.0 are signed with the Android debug
+keystore, so **back that keystore up** - Android only installs an update signed with
+the same key.
 
 Install one on a connected device:
 
@@ -67,6 +85,10 @@ adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
 The release APK requests no permissions at all beyond Flutter's internal
 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; there is no `INTERNET` permission.
+
+The 2.1.0 build reports `versionName=2.1.0`, `versionCode=2003` and is signed
+with the same `CN=Android Debug` certificate as 2.0.0, so it installs over an
+existing copy.
 
 ## Tests
 
@@ -85,13 +107,26 @@ recordings:
 The test file reads the vectors from the repo, so `export/test_vectors.json` is
 deliberately **not** bundled into the app.
 
-Three more suites cover the app itself, so `flutter test` runs 28 tests in total:
+`test/portable_test.dart` also replays `../export/resample_parity.json`: the Dart
+resampler must reproduce the Python output within 1e-8 at 180, 250 and 500 Hz, so
+the anti-aliasing filter and the interpolation cannot drift apart.
 
-- `test/ui_test.dart` — the CSV parser (header, one-per-line, comma separated,
-  first numeric column) and the home/about screens, including the rate validation
-  and the "pick a record first" message.
+Four more suites cover the app itself, so `flutter test` runs 51 tests in total:
+
+- `test/ui_test.dart` — the CSV parser (header, comments, `(time, ecg)` files,
+  Persian/Arabic digits in the rate field) and the home/about screens, including the
+  rate validation, the unit and polarity controls, and the "pick a record first"
+  message.
+- `test/ui_test.dart` also covers the plot geometry: a 60 s recording is 3000 px wide
+  at 400 px per viewport instead of being squeezed in, the trace scrolls left-to-right
+  in Persian, and the Min-Max envelope keeps a one-pixel spike and follows the scroll
+  offset.
 - `test/result_screen_test.dart` — the four summary cards, the plot, the window
-  slider, the legend and the S/V beat list with tap-to-jump.
+  slider, the live language switch, the S/V beat list in ascending time order with
+  tap-to-jump, the `1:00.0` time format (never `0:60.0`), and a 320 px wide phone
+  in both languages, where a card or legend that does not fit fails the test.
+- `test/persian_test.dart` — every screen in Persian, with its own `tearDown` so the
+  locale cannot leak into another test.
 - `test/isolate_test.dart` — the real isolate path end to end: record 200 gives
   81 beats (37 N, 0 S, 44 V) at 89.3 bpm, matching `portable.analyze_reference`,
   and a flat signal reports no beats.
@@ -107,13 +142,14 @@ lib/
     constants.dart    FS, PRE/POST, R, weights
     stats.dart        numpy-compatible median / argmax / argmin
     filter.dart       sosFilt, filtFilt (odd-extension padding, padlen 720)
-    resample.dart     resampleLinear to 360 Hz
+    resample.dart     sanitizeSignal, anti-alias low-pass, resampleLinear to 360 Hz
     rpeaks.dart       detectRPeaks (Pan-Tompkins style)
     features.dart     beatFeatures (57 values)
     forest.dart       Forest.fromJson, predictProba (float32 casts)
     analyze.dart      EcgConfig, EcgAnalyzer.analyze
-  data/           asset loading, CSV parsing, isolate worker
-  ui/             home, result, about screens, plot painter, theme
+  data/           asset loading, signal parser, units, isolate worker
+  l10n/           English and Persian strings
+  ui/             home, result, about screens, scrollable plot, theme
 assets/
   ecg_config.json   filter coefficients + decision weights
   ecg_forest.json   the 50 exported trees
@@ -135,18 +171,25 @@ wrong, and are handled explicitly:
 - Features are rounded to float32 before being compared with the float64 thresholds,
   matching scikit-learn.
 - The recording-level median R-R uses only the beats that are actually analyzed.
+- Bad samples are interpolated before filtering, but more than 5% NaN/Inf or a
+  corrupt run longer than 0.5 s is rejected (`SignalException` in both languages).
+- Resampling to 360 Hz uses a 3rd-order Butterworth low-pass at 150 Hz whenever the
+  source rate is above 360, built from biquads (no scipy in Python either).
+- `detectRPeaks` seeds its thresholds from the median of 2 s block maxima over the
+  first 8 s and a median noise level, not from the first two seconds.
+- The plot's Min-Max envelope is a rendering detail only; it never feeds the model.
 
 ## Data and results
 
-MIT-BIH Arrhythmia Database, first lead (MLII) only. Inter-patient split: 22 training
+MIT-BIH Arrhythmia Database, lead MLII only. Inter-patient split: 22 training
 and 22 different test patients.
 
 | Class | F1 |
 |---|---|
 | N | 0.965 |
-| V | 0.926 |
-| S | 0.180 |
-| Macro F1 (N, S, V) | 0.69 |
+| V | 0.923 |
+| S | 0.177 |
+| Macro F1 (N, S, V) | 0.688 |
 
 Limitations: S beats are weak, fusion (F) beats are not predicted, single lead, one
 database.

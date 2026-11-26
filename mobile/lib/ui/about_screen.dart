@@ -59,9 +59,9 @@ class AboutScreen extends StatelessWidget {
               subtitle: s.testResultsSubtitle,
               children: [
                 _MetricRow(label: s.labelNF1, value: '0.965'),
-                _MetricRow(label: s.labelVF1, value: '0.926'),
-                _MetricRow(label: s.labelSF1, value: '0.180'),
-                _MetricRow(label: s.labelMacroF1, value: '0.69'),
+                _MetricRow(label: s.labelVF1, value: '0.923'),
+                _MetricRow(label: s.labelSF1, value: '0.177'),
+                _MetricRow(label: s.labelMacroF1, value: '0.688'),
               ],
             ),
             _Section(
@@ -172,7 +172,7 @@ class _Bullet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 2, right: 8),
+            padding: const EdgeInsetsDirectional.only(top: 6, start: 2, end: 8),
             child: Container(
               width: 5,
               height: 5,

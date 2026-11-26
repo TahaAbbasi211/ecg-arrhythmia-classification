@@ -51,21 +51,31 @@ List<int> detectRPeaks(List<double> xf, List<Biquad> sosDet, {int sampleRate = f
 
   final refr = (0.2 * sampleRate).toInt();
 
-  // Initial estimates from the first 2 s of the integrated signal.
-  final initEnd = 2 * sampleRate < n ? 2 * sampleRate : n;
-  var initMax = mwi[0];
-  var initSum = 0.0;
-  for (var i = 0; i < initEnd; i++) {
-    if (mwi[i] > initMax) initMax = mwi[i];
-    initSum += mwi[i];
+  // Robust initial thresholds. Half of the first 2 s peak would let one 50 mV
+  // spike near the start raise the threshold so far that every real beat is
+  // missed. The median of the 2 s block maxima over the first 8 s ignores such
+  // an outlier, and the noise peak is a median too.
+  final initEnd = 8 * sampleRate < n ? 8 * sampleRate : n;
+  final block = 2 * sampleRate;
+  final blockMaxima = <double>[];
+  for (var start = 0; start < initEnd; start += block) {
+    final stop = start + block < initEnd ? start + block : initEnd;
+    var blockMax = mwi[start];
+    for (var i = start + 1; i < stop; i++) {
+      if (mwi[i] > blockMax) blockMax = mwi[i];
+    }
+    if (blockMax > 0) blockMaxima.add(blockMax);
   }
-  var spki = 0.5 * initMax;
-  var npki = 0.5 * (initSum / initEnd);
+  var spki = blockMaxima.isEmpty ? 0.0 : median(blockMaxima);
+  var npki = initEnd > 0 ? median(mwi.sublist(0, initEnd)) : 0.0;
+  if (npki > spki) npki = 0.5 * spki;
 
   final acceptedPos = <int>[];
   final acceptedH = <double>[];
   final rejectedPos = <int>[];
   final rejectedH = <double>[];
+  // Forward pointer into the rejected candidates; keeps search-back O(N).
+  var rj = 0;
 
   for (final ci in candidates) {
     final h = mwi[ci];
@@ -90,16 +100,20 @@ List<int> detectRPeaks(List<double> xf, List<Biquad> sosDet, {int sampleRate = f
         if (ci - acceptedPos.last > 1.66 * rr) {
           final loPos = acceptedPos.last + refr;
           final hiPos = ci - refr;
+          // loPos and hiPos only ever move forward, so a single pointer walks
+          // the rejected list once instead of rescanning it for every beat.
+          while (rj < rejectedPos.length && rejectedPos[rj] < loPos) {
+            rj++;
+          }
           var bestIdx = -1;
           var bestH = 0.0;
-          for (var i = 0; i < rejectedPos.length; i++) {
-            if (rejectedPos[i] >= loPos && rejectedPos[i] <= hiPos && rejectedH[i] > 0.5 * thr) {
-              // Python's max(..., key=...) returns the FIRST maximum on ties.
-              if (bestIdx < 0 || rejectedH[i] > bestH) {
-                bestIdx = i;
-                bestH = rejectedH[i];
-              }
+          var j = rj;
+          while (j < rejectedPos.length && rejectedPos[j] <= hiPos) {
+            if (rejectedH[j] > 0.5 * thr && (bestIdx < 0 || rejectedH[j] > bestH)) {
+              bestIdx = j;
+              bestH = rejectedH[j];
             }
+            j++;
           }
           if (bestIdx >= 0) {
             acceptedPos.add(rejectedPos[bestIdx]);
@@ -109,7 +123,8 @@ List<int> detectRPeaks(List<double> xf, List<Biquad> sosDet, {int sampleRate = f
       }
       acceptedPos.add(ci);
       acceptedH.add(h);
-      spki = 0.125 * h + 0.875 * spki;
+      // Cap the jump: one noisy peak may not quadruple the signal estimate.
+      spki = 0.125 * (spki > 0 ? (h < 4.0 * spki ? h : 4.0 * spki) : h) + 0.875 * spki;
     } else {
       rejectedPos.add(ci);
       rejectedH.add(h);

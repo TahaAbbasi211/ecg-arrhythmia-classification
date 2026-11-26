@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/file_service.dart';
 import '../data/model_bundle.dart';
 import '../data/signal_parser.dart';
+import '../data/signal_units.dart';
 import '../l10n/strings.dart';
 import 'about_screen.dart';
 import 'result_screen.dart';
@@ -16,13 +17,18 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _rateController = TextEditingController(text: '360');
+  static const String _demoRate = '360';
+
+  final _rateController = TextEditingController(text: _demoRate);
   final _formKey = GlobalKey<FormState>();
 
   String? _selectedSampleId;
   String? _importedName;
   List<double>? _importedValues;
   int _importedSkipped = 0;
+
+  SignalUnit _unit = SignalUnit.millivolt;
+  bool _invert = false;
 
   bool _busy = false;
   String? _error;
@@ -34,79 +40,134 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickCsv() async {
-    final s = AppStrings.of(context);
+    if (_busy) return;
     setState(() => _error = null);
     try {
-      final result = await pickSignalFile();
-      if (result == null) return;
-      final parsed = parseSignalText(result.text);
+      final picked = await pickSignalFile();
+      if (!mounted || picked == null) return;
+      // Parsing runs off the UI thread: a 20 MB file must not drop frames.
+      final parsed = await parseSignalTextAsync(picked.text);
+      if (!mounted) return;
       if (parsed.values.length < 2) {
-        setState(() => _error = s.noNumbersInFile);
+        setState(() => _error = AppStrings.of(context).noNumbersInFile);
         return;
       }
       setState(() {
-        _importedName = result.name;
+        _importedName = picked.name;
         _importedValues = parsed.values;
         _importedSkipped = parsed.skippedLines;
         _selectedSampleId = null;
+        _error = null;
       });
     } catch (e) {
-      setState(() => _error = s.couldNotReadFile(e));
+      if (!mounted) return;
+      setState(() => _error = AppStrings.of(context).couldNotReadFile(e));
     }
   }
 
   String? _validateRate(String? value) {
     final s = AppStrings.of(context);
-    final v = double.tryParse((value ?? '').trim());
-    if (v == null) return s.validateRateNumber;
-    if (v < 100 || v > 2000) return s.validateRateRange;
+    final rate = parseSamplingRate(value ?? '');
+    if (rate == null) return s.validateRateNumber;
+    if (rate < 100 || rate > 2000) return s.validateRateRange;
     return null;
   }
 
   Future<void> _analyze() async {
-    final s = AppStrings.of(context);
+    if (_busy) return;
     setState(() => _error = null);
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final fs = double.parse(_rateController.text.trim());
-    List<double> raw;
-    String title;
-    if (_importedValues != null) {
-      raw = _importedValues!;
-      title = _importedName ?? (s.isFa ? 'فایل CSV بارگذاری‌شده' : 'Imported CSV');
-    } else if (_selectedSampleId != null) {
-      final sample =
-          sampleRecords.firstWhere((s) => s.id == _selectedSampleId);
-      raw = await loadSampleValues(sample);
-      title = s.sampleTitle(sample.id, sample.title);
-    } else {
-      setState(() => _error = s.pickRecordFirst);
-      return;
-    }
+    final fs = parseSamplingRate(_rateController.text);
+    if (fs == null) return;
 
-    final seconds = raw.length / fs;
-    if (seconds < 10) {
-      setState(() => _error = s.signalTooShort(seconds.toStringAsFixed(1)));
+    final sample = _selectedSampleId == null
+        ? null
+        : sampleRecords.firstWhere((r) => r.id == _selectedSampleId);
+    if (_importedValues == null && sample == null) {
+      setState(() => _error = AppStrings.of(context).pickRecordFirst);
       return;
     }
 
     setState(() => _busy = true);
     try {
-      final payload = await runAnalysis(raw: raw, sourceFs: fs);
-      if (payload.beatCount == 0) {
+      var values = _importedValues;
+      if (values == null) {
+        values = await loadSampleValues(sample!);
+        if (!mounted) return;
+      }
+      final raw = values;
+
+      final seconds = raw.length / fs;
+      if (seconds < 10) {
         setState(() {
           _busy = false;
-          _error = s.noBeatsDetected;
+          _error = AppStrings.of(context)
+              .signalTooShort(seconds.toStringAsFixed(1));
         });
         return;
       }
+
+      var payload = await runAnalysis(
+        raw: applySignalUnit(raw, _unit, invert: _invert),
+        sourceFs: fs,
+      );
       if (!mounted) return;
+
+      // A filtered ECG spans about 0.5-5 mV. A much smaller or much larger
+      // spread means the input unit is probably wrong. Offer the conversion,
+      // never apply it silently.
+      final amplitude = payload.p99 - payload.p1;
+      final suggestion = suggestUnitFor(amplitude);
+      if (suggestion != null && suggestion != _unit) {
+        final strings = AppStrings.of(context);
+        final chosen = await showDialog<SignalUnit>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(strings.amplitudeWarningTitle),
+            content: Text(
+              suggestion == SignalUnit.volt
+                  ? strings.amplitudeTooSmall(amplitude.toStringAsFixed(3))
+                  : strings.amplitudeTooLarge(amplitude.toStringAsFixed(0)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(strings.continueAnyway),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(suggestion),
+                child: Text(strings.convertToUnit(strings.unitLabel(suggestion))),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+        if (chosen != null) {
+          setState(() => _unit = chosen);
+          payload = await runAnalysis(
+            raw: applySignalUnit(raw, chosen, invert: _invert),
+            sourceFs: fs,
+          );
+          if (!mounted) return;
+        }
+      }
+
+      if (payload.beatCount == 0) {
+        setState(() {
+          _busy = false;
+          _error = AppStrings.of(context).noBeatsDetected;
+        });
+        return;
+      }
+
       setState(() => _busy = false);
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ResultScreen(
             payload: payload,
-            title: title,
+            sample: sample,
+            fileName: sample == null ? _importedName : null,
             sourceFs: fs,
           ),
         ),
@@ -115,8 +176,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = s.analysisFailed(e);
+        _error = AppStrings.of(context).analysisFailed(e);
       });
+    } finally {
+      if (mounted && _busy) setState(() => _busy = false);
     }
   }
 
@@ -145,7 +208,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 4),
                   Text(
                     s.languageToggle,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -192,6 +258,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               _importedValues = null;
                               _importedName = null;
                               _error = null;
+                              // The bundled records are all 360 Hz, so a rate
+                              // left over from an imported file would be wrong.
+                              _rateController.text = _demoRate;
                             }),
                   ),
                 ),
@@ -220,7 +289,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: _rateController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: s.samplingRateLabel,
                   helperText: s.samplingRateHelper,
@@ -228,7 +298,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 validator: _validateRate,
                 enabled: !_busy,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<SignalUnit>(
+                initialValue: _unit,
+                decoration: InputDecoration(
+                  labelText: s.signalUnitLabel,
+                  helperText: s.signalUnitHelper,
+                ),
+                items: [
+                  for (final unit in SignalUnit.values)
+                    DropdownMenuItem<SignalUnit>(
+                      value: unit,
+                      child: Text(s.unitLabel(unit)),
+                    ),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (unit) {
+                        if (unit != null) setState(() => _unit = unit);
+                      },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(s.invertPolarity),
+                subtitle: Text(s.invertPolarityHelp),
+                value: _invert,
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() => _invert = value),
+              ),
+              const SizedBox(height: 12),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -241,8 +340,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.error_outline,
-                            color: scheme.onErrorContainer, size: 20),
+                        Icon(
+                          Icons.error_outline,
+                          color: scheme.onErrorContainer,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(

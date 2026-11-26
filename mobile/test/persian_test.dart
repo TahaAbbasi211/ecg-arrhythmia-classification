@@ -18,9 +18,26 @@ Widget _wrapFa(Widget child) => MaterialApp(
       home: child,
     );
 
+/// A tall phone, so the whole home form is laid out and findable.
+void _tall(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 3000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
 void main() {
-  testWidgets('Home screen renders in Persian correctly', (tester) async {
+  setUp(() {
     appLocaleNotifier.value = const Locale('fa');
+  });
+
+  tearDown(() {
+    // The notifier is global; leaving it on Persian would leak into the next
+    // test file, which expects English strings.
+    appLocaleNotifier.value = const Locale('en');
+  });
+
+  testWidgets('Home screen renders in Persian correctly', (tester) async {
+    _tall(tester);
     await tester.pumpWidget(_wrapFa(const HomeScreen()));
     await tester.pumpAndSettle();
 
@@ -32,15 +49,17 @@ void main() {
     expect(find.text('بارگذاری فایل CSV'), findsOneWidget);
     expect(find.text('تحلیل و پردازش'), findsOneWidget);
     expect(find.text('English'), findsOneWidget); // Language switch button
+    // The new controls are translated too, and the labels are not mirrored
+    // away from their fields.
+    expect(find.text('واحد سیگنال'), findsOneWidget);
+    expect(find.text('معکوس کردن پلاریته'), findsOneWidget);
   });
 
   testWidgets('Validation error in Persian when no record selected', (tester) async {
-    appLocaleNotifier.value = const Locale('fa');
+    _tall(tester);
     await tester.pumpWidget(_wrapFa(const HomeScreen()));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('تحلیل و پردازش'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('تحلیل و پردازش'));
     await tester.pumpAndSettle();
 
@@ -48,18 +67,17 @@ void main() {
   });
 
   testWidgets('About screen renders in Persian correctly', (tester) async {
-    tester.view.physicalSize = const Size(1080, 4000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    appLocaleNotifier.value = const Locale('fa');
+    _tall(tester);
     await tester.pumpWidget(_wrapFa(const AboutScreen()));
     await tester.pumpAndSettle();
 
     expect(find.text('درباره برنامه'), findsOneWidget);
-    expect(find.text('V2.0.0'), findsOneWidget);
+    expect(find.text('V2.1.0'), findsOneWidget);
     expect(find.textContaining('MIT-BIH'), findsOneWidget);
     expect(find.text('0.965'), findsOneWidget);
+    expect(find.text('0.923'), findsOneWidget);
+    expect(find.text('0.177'), findsOneWidget);
+    expect(find.text('0.688'), findsOneWidget);
     expect(find.textContaining('پروژه آموزشی و پژوهشی'), findsOneWidget);
   });
 }
