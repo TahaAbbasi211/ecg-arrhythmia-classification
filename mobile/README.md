@@ -1,4 +1,4 @@
-# ECG Beat Classifier (Android) - V3.1.0
+# ECG Beat Classifier (Android) - V4.0.0
 
 Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (normal),
 **S** (supraventricular premature) or **V** (ventricular premature).
@@ -10,7 +10,14 @@ Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (no
 - Automatic locale detection (starts in Persian if device language is Persian).
 - Pure on-device offline inference (no internet permission required).
 
-**New in V3.1.0 (`3.1.0+4`):**
+**New in V4.0.0 (`4.0.0+5`):**
+- **BioVanta Obsidian Dark & Clinical ECG Paper Light UI (`Monitor`, `Studio`, `Lab & Info`):** Complete 3-tab redesign with custom adaptive BioVanta Obsidian QRS launcher icon, tabular readouts (`FontFeature.tabularFigures()`), and instant 1-tap theme (`Dark` / `Light` / `System`) & language (`EN` / `FA` RTL) switching.
+- **Live ECG Cockpit & Fullscreen Monitor:** Clinical millimeter paper grid (`40 ms` / `200 ms` / `1 s`), live phosphor sweep playback (`0.5×` / `1×` / `2×`) synchronized with beat selection, `Prev/Next S/V` stepping, and distraction-free fullscreen route.
+- **200-Sample Beat X-Ray Morphology Microscope:** Displays `-250 ms` to `+305 ms` beat waveform overlaid with the patient recording's median-template ghost (`P`/`QRS`/`T` bands), R-R timing cards, and normalized decision `score` + raw `p` breakdown.
+- **Interactive R-R Rhythm Analytics:** Beat-to-beat **R-R Tachogram** and **Poincaré HRV scatter plot** (`RR[n]` vs `RR[n+1]`) with tap-to-jump navigation to any beat.
+- **R8 Shrinking & Expanded Verification:** Enables `isMinifyEnabled` + `isShrinkResources` (`proguard-rules.pro`), passes `flutter analyze` with zero issues and **65 Flutter tests**, all powered by the **frozen `v3.1` offline engine** (`163 KB` HGB, 84 scale-invariant features, IEEE-754 `float64` parity).
+
+**Foundation from V3.1.0 (`3.1.0+4` — frozen scientific engine):**
 - **Scale-invariant `v3.1` engine:** Upgraded from the `1.275 MB` 50-tree Random Forest (`ecg_forest.json`, removed from assets) and 57 features to a **`163 KB` `HistGradientBoosting` model (`ecg_model_v3.json`)** over **84 scale-invariant features** (`features_v3.dart`), reducing asset size by **>1.1 MB**.
 - **True `float64` HGB inference (`hgb_model.dart`):** Unrounded `float64` split thresholds with an `isFinite` guard across all 84 features (no `Float32List` rounding), matching `scikit-learn` within `2.25e-6` (`0` label flips across `9,933` `DS2` beats).
 - **Scale invariance across Volts, mV, and µV:** Beats are median-centered and normalized by `rec_scale`, so `0.001×`, `1×`, and `1000×` recordings yield identical beat predictions (unit selection remains useful for an accurate `mV` vertical axis on the plot).
@@ -93,8 +100,8 @@ deliberately **not** bundled into the app.
 
 Four more suites cover the app itself:
 
-- `test/ui_test.dart` — CSV parser, home/about screens (`V3.1.0`, `DS2` metrics, sustained atrial rhythm limitation), rate validation, unit/polarity controls, plot geometry, and Min-Max envelope.
-- `test/result_screen_test.dart` — summary cards, plot, window slider, live language switch, S/V beat rows (`score = ...`, default weighted `effectiveScores`), time formatting, and 320 px narrow-phone layout.
+- `test/ui_test.dart` — CSV parser, 3-tab `InstrumentShell`, Dark/Light theme switching, home/about screens (`V4.0.0`, `DS2` & `SVDB` metrics, sustained atrial rhythm limitation), rate validation, unit/polarity controls, 320 px responsiveness, plot geometry, and Min-Max envelope.
+- `test/result_screen_test.dart` — Telemetry HUD, plot, live sweep playback, Beat X-Ray, R-R Tachogram/Poincaré, window slider, live language switch, S/V beat rows (`score = ...`, default weighted `effectiveScores`), time formatting, and 320 px narrow-phone layout.
 - `test/persian_test.dart` — every screen in Persian with RTL checks and locale cleanup.
 - `test/isolate_test.dart` — isolate execution end to end: `record_200.csv` gives 81 beats (`37 N, 0 S, 44 V`) at `89.3 bpm`, and a flat signal reports no beats.
 
@@ -115,7 +122,7 @@ lib/
     analyze.dart      EcgConfig, EcgAnalyzer.analyze
   data/           asset loading, signal parser, units, isolate worker
   l10n/           English and Persian strings
-  ui/             home, result, about screens, scrollable plot, theme
+  ui/             3-tab shell, view-model, home, result, about screens, plot, widgets (X-Ray, R-R charts, fullscreen), theme
 assets/
   ecg_config.json    filter coefficients + v3.1 schema/decision weights
   ecg_model_v3.json  compact 163 KB exported HistGradientBoosting model
