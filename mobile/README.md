@@ -5,6 +5,12 @@ Offline Flutter app that classifies heartbeats of a single-lead ECG as **N** (no
 
 > **Disclaimer:** Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.
 
+<p align="center">
+  <img src="../docs/mobile_v4_monitor.jpg" alt="BioVanta ECG V4.0.0 — Monitor & Live Oscilloscope" width="280" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="../docs/mobile_v4_studio.jpg" alt="BioVanta ECG V4.0.0 — Telemetry Studio (Record 233)" width="280" />
+</p>
+
 **Features:**
 - **Full Persian (Farsi) & English localization:** Native Right-to-Left (RTL) support, full medical and technical Persian terminology, and an instant in-app language switcher (`FA` / `EN`).
 - Automatic locale detection (starts in Persian if device language is Persian).

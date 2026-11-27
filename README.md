@@ -4,9 +4,15 @@ Classifies individual heartbeats from single-lead ECG signals as **Normal (N)**,
 
 > **Disclaimer:** Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.
 
-![App screenshot](docs/app_demo.png)
+<p align="center">
+  <img src="docs/mobile_v4_monitor.jpg" alt="BioVanta ECG V4.0.0 — Monitor & Live Oscilloscope" width="280" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/mobile_v4_studio.jpg" alt="BioVanta ECG V4.0.0 — Telemetry Studio (Record 233)" width="280" />
+</p>
 
 **[Download the Android app (APK)](https://github.com/TahaAbbasi211/ecg-arrhythmia-classification/releases/latest)**: runs fully offline, no data leaves the phone.
+
+![Streamlit v3.1 web demo](docs/app_demo.png)
 
 ## Highlights
 
