@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:ecg_beat_classifier/data/analysis_worker.dart';
 import 'package:ecg_beat_classifier/data/model_bundle.dart';
+import 'package:ecg_beat_classifier/l10n/strings.dart';
 import 'package:ecg_beat_classifier/ui/ecg_plot.dart';
 import 'package:ecg_beat_classifier/ui/result_screen.dart';
 import 'package:ecg_beat_classifier/ui/theme.dart';
@@ -9,45 +10,57 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// A small synthetic result: 3 analyzed beats, one N, one S, one V.
+/// Synthetic 5-beat result: three N, one S, one V for rich Timeline/X-Ray/Poincaré testing.
 AnalysisPayload _payload() {
   const fs = 360;
-  final signal = List<double>.generate(fs * 12, (i) => (i % 40) / 100.0);
+  final signal = List<double>.generate(
+    fs * 12,
+    (i) => math.sin(i / 18.0) * 0.4,
+  );
   return AnalysisPayload(
     signal: signal,
-    peaks: const [180, 540, 900],
-    pred: const [0, 1, 2],
+    peaks: const [180, 540, 900, 1260, 1620],
+    pred: const [0, 1, 2, 0, 0],
     proba: const [
-      [0.9, 0.05, 0.05, 0.0],
-      [0.1, 0.8, 0.1, 0.0],
-      [0.05, 0.05, 0.9, 0.0],
+      [0.92, 0.04, 0.04, 0.0],
+      [0.10, 0.80, 0.10, 0.0],
+      [0.05, 0.05, 0.90, 0.0],
+      [0.91, 0.05, 0.04, 0.0],
+      [0.93, 0.04, 0.03, 0.0],
     ],
     scores: const [
-      [0.9, 0.05, 0.05, 0.0],
-      [0.1, 0.8, 0.1, 0.0],
-      [0.05, 0.05, 0.9, 0.0],
+      [0.92, 0.04, 0.04, 0.0],
+      [0.10, 0.80, 0.10, 0.0],
+      [0.05, 0.05, 0.90, 0.0],
+      [0.91, 0.05, 0.04, 0.0],
+      [0.93, 0.04, 0.03, 0.0],
     ],
     sampleRate: fs,
     medianRr: 360,
     heartRate: 60,
-    p1: 0.0,
+    p1: -0.4,
     p99: 0.4,
   );
 }
 
-/// 60 s with one late V beat, so the plot has somewhere to scroll.
 AnalysisPayload _latePayload() {
   const fs = 360;
   final signal = List<double>.generate(fs * 60, (i) => math.sin(i / 20.0) * 0.5);
   return AnalysisPayload(
     signal: signal,
-    peaks: const [18000],
-    pred: const [2],
+    peaks: const [360, 720, 1080, 18000],
+    pred: const [0, 0, 0, 2],
     proba: const [
-      [0.05, 0.05, 0.9, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.05, 0.05, 0.90, 0.0],
     ],
     scores: const [
-      [0.05, 0.05, 0.9, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.90, 0.05, 0.05, 0.0],
+      [0.05, 0.05, 0.90, 0.0],
     ],
     sampleRate: fs,
     medianRr: 360,
@@ -57,7 +70,6 @@ AnalysisPayload _latePayload() {
   );
 }
 
-/// One beat 20 ms before a full minute: rounding to tenths must not print 0:60.0.
 AnalysisPayload _edgePayload() {
   const fs = 360;
   final signal = List<double>.generate(fs * 61, (i) => math.sin(i / 20.0) * 0.5);
@@ -88,6 +100,8 @@ Widget _app(Widget home, {Locale locale = const Locale('en')}) => MaterialApp(
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: ThemeMode.dark,
       home: home,
     );
 
@@ -98,7 +112,12 @@ void _tall(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('result screen shows the summary, plot and S/V beat list',
+  tearDown(() {
+    appLocaleNotifier.value = const Locale('en');
+    appThemeModeNotifier.value = ThemeMode.dark;
+  });
+
+  testWidgets('result screen shows telemetry HUD, plot, and S/V beat timeline',
       (tester) async {
     _tall(tester);
     await tester.pumpWidget(_app(
@@ -111,35 +130,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('record_200.csv'), findsOneWidget);
-
-    // Four summary cards.
-    expect(find.text('Beats analyzed'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('Heart rate'), findsOneWidget);
+    expect(find.textContaining('Beats analyzed'), findsOneWidget);
     expect(find.text('60 bpm'), findsOneWidget);
     expect(find.text('S beats'), findsOneWidget);
     expect(find.text('V beats'), findsOneWidget);
 
-    // Plot, window slider and legend.
     expect(find.byType(CustomPaint), findsWidgets);
     expect(find.text('8 s window'), findsOneWidget);
     expect(find.text('N · Normal'), findsOneWidget);
     expect(find.text('S · Supraventricular'), findsOneWidget);
     expect(find.text('V · Ventricular'), findsOneWidget);
 
-    // The S and V beats are listed with time and normalized score.
-    expect(find.text('S and V beats'), findsOneWidget);
     expect(find.text('0:01.5'), findsOneWidget);
     expect(find.text('0:02.5'), findsOneWidget);
     expect(find.text('score = 0.80'), findsOneWidget);
     expect(find.text('score = 0.90'), findsOneWidget);
 
-    // Tapping a row moves the plot without throwing.
     await tester.tap(find.text('0:02.5'));
     await tester.pumpAndSettle();
   });
 
-  testWidgets('window slider changes the visible window', (tester) async {
+  testWidgets('zoom chips change window size cleanly', (tester) async {
     _tall(tester);
     await tester.pumpWidget(_app(
       ResultScreen(
@@ -151,9 +162,74 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('8 s window'), findsOneWidget);
-    await tester.drag(find.byType(Slider), const Offset(-200, 0));
+    await tester.tap(find.text('4s'));
     await tester.pumpAndSettle();
+    expect(find.text('4 s window'), findsOneWidget);
     expect(find.text('8 s window'), findsNothing);
+  });
+
+  testWidgets('live playback toggles play/pause and advances without error',
+      (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_app(
+      ResultScreen(
+        payload: _payload(),
+        fileName: 'live.csv',
+        sourceFs: 360,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Play'), findsOneWidget);
+    await tester.tap(find.text('Play'));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Pause'), findsOneWidget);
+    await tester.tap(find.text('Pause'));
+    await tester.pumpAndSettle();
+    expect(find.text('Play'), findsOneWidget);
+  });
+
+  testWidgets('Beat X-Ray renders 200-sample morphology, template ghost, and weighted score note',
+      (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_app(
+      ResultScreen(
+        payload: _payload(),
+        fileName: 'xray.csv',
+        sourceFs: 360,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Beat X-Ray'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('200-Sample Morphology X-Ray'), findsOneWidget);
+    expect(find.text('Median template (ghost)'), findsOneWidget);
+    expect(find.text('score = 0.80'), findsOneWidget);
+    expect(find.textContaining('relative, uncalibrated ranking score'), findsOneWidget);
+  });
+
+  testWidgets('R-R Rhythm tab renders Tachogram and Poincare plot without exceptions',
+      (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_app(
+      ResultScreen(
+        payload: _payload(),
+        fileName: 'rhythm.csv',
+        sourceFs: 360,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('R-R Rhythm'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Beat-to-Beat R-R Tachogram'), findsOneWidget);
+    expect(find.textContaining('Poincaré HRV Plot'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a beat just under a minute reads 1:00.0, never 0:60.0',
@@ -172,7 +248,7 @@ void main() {
     expect(find.text('0:60.0'), findsNothing);
   });
 
-  testWidgets('the app bar title follows the current language', (tester) async {
+  testWidgets('the screen title follows the current language', (tester) async {
     _tall(tester);
     final sample = sampleRecords.firstWhere((record) => record.id == '200');
 
@@ -182,7 +258,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Record 200'), findsOneWidget);
 
-    // Same widget, same state: only the language changed.
     await tester.pumpWidget(_app(
       ResultScreen(payload: _payload(), sample: sample, sourceFs: 360),
       locale: const Locale('fa'),
@@ -199,7 +274,6 @@ void main() {
     final payload = AnalysisPayload(
       signal: List<double>.generate(fs * 12, (i) => (i % 40) / 100.0),
       peaks: const [180, 540, 900],
-      // V comes first in the prediction array, S later.
       pred: const [2, 0, 1],
       proba: const [
         [0.05, 0.05, 0.9, 0.0],
@@ -223,21 +297,32 @@ void main() {
     expect(first, lessThan(second));
   });
 
-  testWidgets('summary cards fit a 320 px phone in both languages',
+  testWidgets('all studio views fit a 320 px phone in both languages',
       (tester) async {
-    // The narrowest phone we support: four cards cannot be side by side, and a
-    // RenderFlex overflow would surface as an exception here.
     tester.view.physicalSize = const Size(320, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     for (final locale in const [Locale('en'), Locale('fa')]) {
+      final s = locale.languageCode == 'fa';
       await tester.pumpWidget(_app(
-        ResultScreen(payload: _latePayload(), fileName: 'record_200.csv', sourceFs: 360),
+        ResultScreen(
+          payload: _payload(),
+          fileName: 'record_200.csv',
+          sourceFs: 360,
+        ),
         locale: locale,
       ));
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: locale.languageCode);
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} timeline');
+
+      await tester.tap(find.text(s ? 'کالبدشکافی ضربان' : 'Beat X-Ray'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} xray');
+
+      await tester.tap(find.text(s ? 'ریتم R-R' : 'R-R Rhythm'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} rhythm');
     }
   });
 
@@ -283,7 +368,6 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // [0.1*1, 0.8*0.25, 0.1*0.5, 0] = [0.1, 0.2, 0.05, 0] / 0.35 -> 0.5714
     expect(find.text('score = 0.57'), findsOneWidget);
   });
 }

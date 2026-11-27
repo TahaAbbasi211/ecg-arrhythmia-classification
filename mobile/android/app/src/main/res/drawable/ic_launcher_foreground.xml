@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Subtle outer cyan glow aura -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M22,56 L36,56 L41,49 L46,59 L51,29 L57,79 L62,48 L67,56 L86,56"
+        android:strokeWidth="7.5"
+        android:strokeAlpha="0.24"
+        android:strokeColor="#39C5CF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Crisp emerald-cyan QRS pulse waveform centered inside safe zone -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M22,56 L36,56 L41,49 L46,59 L51,29 L57,79 L62,48 L67,56 L86,56"
+        android:strokeWidth="3.8"
+        android:strokeColor="#3FB950"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Bright telemetry highlight on R-peak apex -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M48,44 L51,29 L54,54"
+        android:strokeWidth="3.8"
+        android:strokeColor="#39C5CF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

@@ -2,15 +2,24 @@ import 'dart:math' as math;
 
 import 'package:ecg_beat_classifier/data/analysis_worker.dart';
 import 'package:ecg_beat_classifier/data/signal_parser.dart';
+import 'package:ecg_beat_classifier/ecg/constants.dart' as ecg_constants;
+import 'package:ecg_beat_classifier/l10n/strings.dart';
 import 'package:ecg_beat_classifier/ui/about_screen.dart';
 import 'package:ecg_beat_classifier/ui/ecg_plot.dart';
+import 'package:ecg_beat_classifier/ui/ecg_view_model.dart';
 import 'package:ecg_beat_classifier/ui/home_screen.dart';
+import 'package:ecg_beat_classifier/ui/instrument_shell.dart';
 import 'package:ecg_beat_classifier/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _wrap(Widget child, {Locale locale = const Locale('en')}) => MaterialApp(
+Widget _wrap(
+  Widget child, {
+  Locale locale = const Locale('en'),
+  ThemeMode themeMode = ThemeMode.dark,
+}) =>
+    MaterialApp(
       locale: locale,
       supportedLocales: const [Locale('en'), Locale('fa')],
       localizationsDelegates: const [
@@ -19,17 +28,17 @@ Widget _wrap(Widget child, {Locale locale = const Locale('en')}) => MaterialApp(
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: themeMode,
       home: child,
     );
 
-/// A tall phone, so the whole home form is laid out and findable.
 void _tall(WidgetTester tester) {
   tester.view.physicalSize = const Size(1080, 3000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 }
 
-/// 60 s at 360 Hz: the case where samples outnumber pixels about 7 to 1.
 AnalysisPayload _longPayload() {
   const fs = 360;
   final signal = List<double>.generate(
@@ -38,12 +47,14 @@ AnalysisPayload _longPayload() {
   );
   return AnalysisPayload(
     signal: signal,
-    peaks: const [180, 5400, 21400],
-    pred: const [0, 1, 2],
+    peaks: const [180, 720, 1260, 5400, 21400],
+    pred: const [0, 0, 0, 1, 2],
     proba: const [
-      [0.9, 0.05, 0.05, 0.0],
-      [0.1, 0.8, 0.1, 0.0],
-      [0.05, 0.05, 0.9, 0.0],
+      [0.92, 0.04, 0.04, 0.0],
+      [0.91, 0.05, 0.04, 0.0],
+      [0.93, 0.04, 0.03, 0.0],
+      [0.10, 0.80, 0.10, 0.0],
+      [0.05, 0.05, 0.90, 0.0],
     ],
     sampleRate: fs,
     medianRr: 360,
@@ -62,6 +73,11 @@ EcgTracePainter _painter(WidgetTester tester) {
 }
 
 void main() {
+  tearDown(() {
+    appLocaleNotifier.value = const Locale('en');
+    appThemeModeNotifier.value = ThemeMode.dark;
+  });
+
   test('parser takes the only numeric column and skips comments', () {
     final parsed = parseSignalText(
       'MLII_mV\n0.86\n0.765\n\n# comment\n// another\n0.645\n',
@@ -71,7 +87,6 @@ void main() {
   });
 
   test('parser drops a leading time column instead of plotting it', () {
-    // Time rises evenly, so the second column is the ECG.
     final parsed = parseSignalText('t,value\n0,1.5\n1,2.5\n');
     expect(parsed.values, [1.5, 2.5]);
     expect(parsed.timeColumn, 't');
@@ -83,7 +98,6 @@ void main() {
     expect(parsed.timeColumn, 't');
     expect(parsed.values, <double>[1, 2, 3]);
 
-    // Substring matching would make 'voltage' a time axis and drop the ECG.
     const wrong = 'voltage,value\n0.9,1\n0.1,2\n0.05,3\n';
     expect(parseSignalText(wrong).values, <double>[0.9, 0.1, 0.05]);
   });
@@ -94,7 +108,6 @@ void main() {
   });
 
   test('parser keeps the time column when it is the only signal column', () {
-    // Two uneven steps are not a clock, so this is a signal after all.
     final parsed = parseSignalText('x\n0.0\n1.0\n7.0\n');
     expect(parsed.values, [0.0, 1.0, 7.0]);
   });
@@ -110,29 +123,40 @@ void main() {
   test('Persian and Arabic digits parse as a sampling rate', () {
     expect(parseSamplingRate('۳۶۰'), 360);
     expect(parseSamplingRate('٣٦٠'), 360);
-    // The Arabic decimal separator, and a stray thousands separator.
     expect(parseSamplingRate('360٫0'), 360);
     expect(parseSamplingRate('1٬000'), 1000);
     expect(parseSamplingRate(''), isNull);
   });
 
-  testWidgets('home screen renders the samples, rate field and analyze button',
+  test('EcgViewModel builds 200-sample median template, Poincare pairs, and edge timestamps', () {
+    final vm = EcgViewModel.fromPayload(_longPayload());
+    expect(vm.beatCount, 5);
+    expect(vm.abnormalBeats.length, 2);
+    expect(vm.medianTemplate, isNotNull);
+    expect(vm.medianTemplate!.length, ecg_constants.beatLength);
+    expect(vm.tachogramPoints.length, 4);
+    expect(vm.poincarePoints.length, 3);
+    expect(EcgViewModel.formatTimestamp(59.99), '1:00.0');
+    expect(EcgViewModel.formatTimestamp(59.99), isNot('0:60.0'));
+  });
+
+  testWidgets('home screen renders oscilloscope, demo deck, calibration, and analyze button',
       (tester) async {
     _tall(tester);
     await tester.pumpWidget(_wrap(const HomeScreen()));
     await tester.pumpAndSettle();
 
+    expect(find.text('BIOVANTA · ECG'), findsOneWidget);
+    expect(find.text('V4.0.0'), findsOneWidget);
     expect(find.text('ECG Beat Classifier'), findsOneWidget);
     expect(find.text('Record 200'), findsOneWidget);
-    expect(find.text('Record 100'), findsOneWidget);
     expect(find.text('Record 233'), findsOneWidget);
-    expect(find.text('Import CSV'), findsOneWidget);
+    expect(find.text('Record 100'), findsOneWidget);
+    expect(find.text('Import CSV / TXT'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, '360'), findsOneWidget);
-    expect(find.text('Analyze'), findsOneWidget);
-    // Unit and polarity controls are always visible, so a wrong-unit file can
-    // be fixed before the first analysis instead of after a bad one.
     expect(find.text('Signal unit'), findsOneWidget);
     expect(find.text('Invert polarity'), findsOneWidget);
+    expect(find.text('Analyze'), findsOneWidget);
   });
 
   testWidgets('selecting a demo record resets the rate to 360', (tester) async {
@@ -147,7 +171,6 @@ void main() {
     await tester.tap(find.text('Record 200'));
     await tester.pumpAndSettle();
 
-    // The bundled records are 360 Hz; a leftover 500 would mislabel every beat.
     expect(find.widgetWithText(TextFormField, '360'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, '500'), findsNothing);
   });
@@ -195,6 +218,70 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 
+  testWidgets('InstrumentShell navigates across 3 tabs and switches theme cleanly',
+      (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(
+      ValueListenableBuilder<ThemeMode>(
+        valueListenable: appThemeModeNotifier,
+        builder: (context, mode, _) => _wrap(
+          const InstrumentShell(),
+          themeMode: mode,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Monitor'), findsOneWidget);
+    expect(find.text('Studio'), findsOneWidget);
+    expect(find.text('Lab & Info'), findsOneWidget);
+
+    // Go to empty Studio tab -> Open Monitor returns cleanly
+    await tester.tap(find.text('Studio'));
+    await tester.pumpAndSettle();
+    expect(find.text('Studio Waiting for Signal'), findsOneWidget);
+    await tester.tap(find.text('Open Monitor'));
+    await tester.pumpAndSettle();
+    expect(find.text('BIOVANTA · ECG'), findsOneWidget);
+
+    // Switch to Lab & Info and toggle Light -> Dark theme
+    await tester.tap(find.text('Lab & Info'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Light'));
+    await tester.pumpAndSettle();
+    expect(appThemeModeNotifier.value, ThemeMode.light);
+
+    await tester.tap(find.text('Dark'));
+    await tester.pumpAndSettle();
+    expect(appThemeModeNotifier.value, ThemeMode.dark);
+  });
+
+  testWidgets('InstrumentShell fits 320 px narrow phone across all 3 tabs in EN and FA',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    for (final locale in const [Locale('en'), Locale('fa')]) {
+      appLocaleNotifier.value = locale;
+      await tester.pumpWidget(
+        _wrap(const InstrumentShell(), locale: locale),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} monitor');
+
+      final studioLabel = locale.languageCode == 'fa' ? 'استودیو' : 'Studio';
+      await tester.tap(find.text(studioLabel));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} studio');
+
+      final labLabel = locale.languageCode == 'fa' ? 'آزمایشگاه' : 'Lab & Info';
+      await tester.tap(find.text(labLabel));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '${locale.languageCode} lab');
+    }
+  });
+
   testWidgets('60 s plot scales by the content width, not the viewport',
       (tester) async {
     final controller = ScrollController();
@@ -216,11 +303,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final painter = _painter(tester);
-    // 60 s at 360 Hz over an 8 s / 400 px window is 3000 px of content.
     expect(painter.contentWidth(400), closeTo(3000, 0.5));
     expect(painter.pxPerSampleFor(400), closeTo(3000 / 21600, 1e-9));
     expect(painter.pxPerSampleFor(400), lessThan(1.0));
-    // The old code stretched the trace 7.5x past the end of the content.
     expect(painter.xForSample(21600, 400), closeTo(3000, 0.5));
     expect(painter.xForSample(2880, 400), closeTo(400, 0.5));
     expect(controller.position.maxScrollExtent, closeTo(2600, 0.5));
@@ -247,7 +332,6 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Without this the RTL ambient directionality reverses the scroll view.
     expect(
       find.descendant(
         of: find.byType(EcgPlot),
@@ -289,29 +373,30 @@ void main() {
       columns: 100,
     );
     final first = envelope[0]!;
-    // Column 0 starts at sample 2000, not at sample 0.
     expect(first.min, closeTo(2000, 1));
     expect(first.max, closeTo(2004, 1));
   });
 
-  testWidgets('about screen states the results and the disclaimer',
+  testWidgets('about screen states the V4.0.0 metrics, SVDB transfer, and disclaimer',
       (tester) async {
     _tall(tester);
     await tester.pumpWidget(_wrap(const AboutScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('V3.1.0'), findsOneWidget);
+    expect(find.text('V4.0.0'), findsOneWidget);
     expect(find.textContaining('MIT-BIH Arrhythmia Database'), findsOneWidget);
-    expect(find.textContaining('22 patients for training'), findsOneWidget);
-    expect(find.textContaining('22 different patients for testing'),
-        findsOneWidget);
+    expect(find.textContaining('DS1 training'), findsOneWidget);
+    expect(find.textContaining('DS2 testing'), findsOneWidget);
     expect(find.text('0.972'), findsOneWidget);
     expect(find.text('0.952'), findsOneWidget);
     expect(find.text('0.179'), findsOneWidget);
     expect(find.text('0.701'), findsOneWidget);
+    expect(find.text('94.7%'), findsOneWidget);
+    expect(find.text('0.827'), findsOneWidget);
+    expect(find.text('96.4%'), findsOneWidget);
     expect(find.textContaining('S beats are weak'), findsOneWidget);
     expect(find.textContaining('sustained ectopic atrial'), findsOneWidget);
-    expect(find.textContaining('Fusion (F) beats are not predicted'),
+    expect(find.textContaining('Fusion (F) beats carry weight 0'),
         findsOneWidget);
     expect(find.textContaining('Single lead only'), findsOneWidget);
     expect(

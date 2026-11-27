@@ -1,6 +1,6 @@
 # ECG Arrhythmia Classification
 
-Classifies individual heartbeats from single-lead ECG signals as **Normal (N)**, **Supraventricular premature (S)** or **Ventricular premature (V)** using machine learning. Includes a Streamlit demo and a **fully offline Android app** powered by the **v3.1.0** engine (`HistGradientBoosting` + 84 scale-invariant features).
+Classifies individual heartbeats from single-lead ECG signals as **Normal (N)**, **Supraventricular premature (S)** or **Ventricular premature (V)** using machine learning. Includes a Streamlit demo and a **fully offline `V4.0.0` Android app** powered by the frozen **v3.1.0** engine (`HistGradientBoosting` + 84 scale-invariant features).
 
 > **Disclaimer:** Research and non-clinical software — not a certified medical device and not intended for clinical diagnosis or treatment decisions.
 
@@ -64,7 +64,7 @@ Overall accuracy **`0.947`** (up from `0.933`), macro F1 over `N, S, V`: **`0.70
 
 ## Android app
 
-- **Fully offline (`V3.1.0`)**: no internet permission, all processing and the `163 KB` `ecg_model_v3.json` run on the phone (`mobile/assets/ecg_forest.json` removed, shrinking the bundle by >1.1 MB). English and Persian (RTL), switchable in the app.
+- **Fully offline (`V4.0.0`) over frozen `v3.1` engine**: BioVanta Obsidian Dark & Clinical ECG Paper Light UI redesign featuring a 3-tab dock (`Monitor`, `Studio`, `Lab & Info`), live monitor sweep playback (`0.5×` / `1×` / `2×`), fullscreen monitor, 200-sample **Beat X-Ray** with recording median-template overlay, interactive **R-R Tachogram + Poincaré HRV plot**, custom adaptive launcher icon, and R8 optimization (`isMinifyEnabled` + `isShrinkResources`). Zero internet permission, English & Persian (RTL), powered on-device by the frozen `163 KB` `ecg_model_v3.json` (`mobile/lib/ecg`).
 - Pure `float64` Dart port in `mobile/lib/ecg` (`features_v3.dart`, `hgb_model.dart`, `analyze.dart`, `rpeaks.dart`, `filter.dart`, `resample.dart`). Golden test vectors (`export/test_vectors.json`) verify exact peak/class agreement, `< 1e-10` on all 84 features, `< 1e-6` on probabilities/scores, and `0.001× / 1× / 1000×` scale invariance.
 - Build instructions and signing: see [mobile/README.md](mobile/README.md) and [mobile/android/SIGNING.md](mobile/android/SIGNING.md).
 
@@ -110,7 +110,7 @@ flutter test              # golden vectors, 84-feature & float64 HGB parity, sca
 ```
 app/            Streamlit app, shared signal-file parsing and demo samples
 export/         Single-source-of-truth v3.1 model (JSON), config, golden vectors, resampling fixture
-mobile/         Offline Flutter (Android) app (V3.1.0)
+mobile/         Offline Flutter (Android) app (V4.0.0, frozen v3.1 engine)
 models/         Legacy v2.1 joblib models (supported via load_model(path) for compatibility)
 notebooks/      Phase 0/v2 step-by-step research notebooks
 scripts/        v3 research benchmark, model export, DS2 evaluation, golden-vector/parity export

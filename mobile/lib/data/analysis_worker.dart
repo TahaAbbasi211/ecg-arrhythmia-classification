@@ -21,6 +21,7 @@ class AnalysisPayload {
     required this.heartRate,
     this.p1 = 0.0,
     this.p99 = 0.0,
+    this.detectedPeaks = const <int>[],
   }) : scores = scores ??
             [
               for (final p in proba) effectiveScores(p, decisionWeights),
@@ -28,6 +29,7 @@ class AnalysisPayload {
 
   final List<double> signal;
   final List<int> peaks;
+  final List<int> detectedPeaks;
   final List<int> pred;
   final List<List<double>> proba;
   final List<List<double>> scores;
@@ -67,6 +69,7 @@ AnalysisPayload _run(_Request req) {
   return AnalysisPayload(
     signal: result.signal,
     peaks: result.peaks,
+    detectedPeaks: result.detectedPeaks,
     pred: result.pred,
     proba: result.proba,
     scores: result.scores,
